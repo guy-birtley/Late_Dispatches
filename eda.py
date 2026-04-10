@@ -34,7 +34,7 @@ WITH valid_ids AS (
     SELECT DISTINCT(acaud.rufus_stkno_id) AS rufus_stkno_id
     FROM acaud
     JOIN stck ON acaud.rufus_stkno_id = stck.rufus_stkno_id
-    WHERE acaud_option = 'PS2' AND stck.stck_prod_group IN (10001) --, 10005)
+    WHERE acaud_option = 'PS2' AND stck.stck_prod_group IN (10009) --, 10005)
         AND strftime('%Y', acaud_sys_date) = '2025'
 ),
 sub AS (
@@ -63,6 +63,7 @@ MAX(CASE WHEN quartile_group = 2 THEN trans END) AS mean,
 MAX(CASE WHEN quartile_group = 3 THEN trans END) AS upper_quartile,
 MAX(trans) AS max
 FROM Quartiles;
+
 '''
 
 query = count_all_transactions_by_stkno
