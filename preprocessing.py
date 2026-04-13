@@ -1,6 +1,8 @@
 import pandas as pd
 from tqdm import tqdm
-from helper import tprint
+from helper import tprint, scale, pad_temporal_in
+import numpy as np
+import pickle
 
 ##### static parameters #####
 
@@ -68,3 +70,36 @@ for obs_date in tqdm(obs_dates):
             + [len(this_prod_open_trans)] #number of transactions passed to transformer
         )
         Y.append([row[1]]) # 'late' must be called first in groupby
+
+
+tprint(len(Y), 'observations gathered.')
+
+tprint('Scaling data')
+X, x_scaler = scale(X)
+dense, dense_scaler = scale(dense)
+Y = np.stack(Y)
+
+tprint('Padding X')
+X, mask = pad_temporal_in(X)
+
+tprint('Splitting datasets by true/false')
+true_obs = (Y.flatten() == 1)
+false_obs = (Y.flatten() == 0)
+obs_dict = {}
+for data, label in zip([X, Y, dense, mask], ['X', 'Y', 'dense', 'mask']):
+    obs_dict[f"{label}_true"] = data[true_obs]
+    obs_dict[f"{label}_false"] = data[false_obs]
+
+
+tprint('Saving observations to compressed file')
+np.savez_compressed(rf"cache\observations.npz", **obs_dict)
+
+
+tprint('Saving meta data to pickle file')
+with open(r"cache\preprocess_meta.pkl", "wb") as f:
+    #scalers as list, temporal input column names
+	pickle.dump({'x_scaler': x_scaler, 
+                  'dense_scaler': dense_scaler,
+                  'columns': open_trans.columns}, f)
+     
+tprint('Done')
