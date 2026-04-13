@@ -29,7 +29,12 @@ with rufus_engine.connect() as conn:
             JOIN acaud a ON s.rufus_stkno_id = a.rufus_stkno_id AND a.acaud_ref1 = s.sord_order  -- desp date better from sode?
             GROUP BY s.rufus_stkno_id, s.sord_date_req, s.sord_order_date, s.sord_qty_req
         )
-        SELECT non_phantom_stkno_id AS stkno_id, sord_date_req, sord_order_date, sum(sord_qty_req) AS qty, MAX(desp_date) AS desp_date
+        SELECT non_phantom_stkno_id AS stkno_id,
+                sord_date_req AS req_date,
+                sord_order_date AS order_date,
+                MAX(desp_date) AS desp_date,
+                SUM(sord_qty_req) AS qty,
+                MAX(desp_date) > sord_date_req AS late
         FROM sord_desp_date s
         JOIN phantom_stknos p ON p.raw_stkno_id = s.rufus_stkno_id
         GROUP BY stkno_id, sord_date_req, sord_order_date
@@ -85,8 +90,8 @@ with rufus_engine.connect() as conn:
             1 AS wip
         FROM grouped
         JOIN strc ON strc.rufus_component_id = grouped.rufus_stkno_id
-        JOIN stck fg ON strc.rufus_product_id = fg.rufus_stkno_id AND fg.stck_prod_group = 10001
-        -- WHERE stck_prod_group = 99 -- see note above
+        JOIN stck fg ON strc.rufus_product_id = fg.rufus_stkno_id AND fg.stck_prod_group = 10001  -- see note above (could be just = 99 if aligned properly)
+        WHERE grouped.stck_prod_group IN (99, 99999)
         GROUP BY trans_date, qty, on_hand, grouped.rufus_stkno_id -- in case black part linked to more than 1 white part
         )
                         
