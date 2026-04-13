@@ -1,0 +1,100 @@
+import pandas as pd
+from sqlalchemy import text, create_engine
+import pickle
+
+rufus_engine = create_engine(r"sqlite:///C:/Python Projects/local.db")
+
+#create phantom parts view
+with rufus_engine.connect() as conn:
+    conn.execute(text('DROP VIEW IF EXISTS phantom_stknos'))
+    conn.execute(text('''
+        CREATE VIEW phantom_stknos AS
+            SELECT stck.rufus_stkno_id AS raw_stkno_id, MIN(COALESCE(strc.rufus_component_id, stck.rufus_stkno_id)) AS non_phantom_stkno_id
+            FROM stck
+            -- get phantom components (stock items)
+            LEFT JOIN strc ON strc.rufus_product_id = stck.rufus_stkno_id AND  stck.stck_user1 != ' ' AND stck.stck_prod_group != 10003
+            -- get stck info about components
+            LEFT JOIN stck phantom_comp ON phantom_comp.rufus_stkno_id = strc.rufus_component_id
+            WHERE (phantom_comp.stck_prod_group NOT LIKE '9%' -- filter phantom parts incorrectly set up against black products
+                OR phantom_comp.stck_prod_group IS NULL)
+                AND stck.stck_prod_group = 10001 -- just standard products for now (more transaction history)
+            GROUP BY stck.rufus_stkno_id
+        '''))
+
+    orders = pd.read_sql('''
+        WITH sord_desp_date AS (
+            SELECT s.rufus_stkno_id, s.sord_date_req, s.sord_order_date, s.sord_qty_req,
+                    max(acaud_sys_date) AS desp_date -- get max despatch date for each order
+            FROM sord s
+            JOIN acaud a ON s.rufus_stkno_id = a.rufus_stkno_id AND a.acaud_ref1 = s.sord_order  -- desp date better from sode?
+            GROUP BY s.rufus_stkno_id, s.sord_date_req, s.sord_order_date, s.sord_qty_req
+        )
+        SELECT non_phantom_stkno_id AS stkno_id, sord_date_req, sord_order_date, sum(sord_qty_req) AS qty, MAX(desp_date) AS desp_date
+        FROM sord_desp_date s
+        JOIN phantom_stknos p ON p.raw_stkno_id = s.rufus_stkno_id
+        GROUP BY stkno_id, sord_date_req, sord_order_date
+    ''', con = conn, index_col = 'stkno_id')
+    #slight descrepency here as partially fulfilled orders will still show full allocation until despatched but fuck it
+
+    trans = pd.read_sql('''
+        WITH ranked AS (
+            SELECT
+                acaud_sys_date,
+                acaud.rufus_stkno_id,
+                stck_prod_group,
+                acaud_qty,
+                acaud_open_balance,
+                ROW_NUMBER() OVER (
+                    PARTITION BY acaud_sys_date, acaud.rufus_stkno_id, acaud_qty>0, stck_prod_group
+                    ORDER BY acaud_post_time DESC
+                ) AS row_num
+            FROM acaud
+            JOIN stck ON stck.rufus_stkno_id = acaud.rufus_stkno_id AND stck_prod_group IN (10001, 99, 99999) -- need 99999 because of eda standard_prods_linked_to_non_standard_black_query
+        ),
+        grouped AS (
+            SELECT
+                acaud_sys_date AS trans_date,
+                rufus_stkno_id,
+                stck_prod_group,
+                SUM(acaud_qty) AS qty,
+                MAX(CASE WHEN row_num = 1 THEN acaud_open_balance + acaud_qty END) AS on_hand -- closing balance of the day
+            FROM ranked
+            GROUP BY acaud_sys_date, rufus_stkno_id, acaud_qty > 0, stck_prod_group
+        ),
+        wip_and_finished AS (
+        -- finished transations
+        SELECT
+            trans_date,
+            rufus_stkno_id AS stkno_id,
+            qty,
+            on_hand,
+            NULL AS wip_on_hand,
+            0 AS wip
+        FROM grouped
+        WHERE stck_prod_group = 10001
+                        
+        UNION ALL
+        
+        -- wip transactions
+        SELECT
+            trans_date,
+            MIN(strc.rufus_product_id) AS stkno_id,
+            qty,
+            NULL AS on_hand,
+            on_hand AS wip_on_hand,
+            1 AS wip
+        FROM grouped
+        JOIN strc ON strc.rufus_component_id = grouped.rufus_stkno_id
+        JOIN stck fg ON strc.rufus_product_id = fg.rufus_stkno_id AND fg.stck_prod_group = 10001
+        -- WHERE stck_prod_group = 99 -- see note above
+        GROUP BY trans_date, qty, on_hand, grouped.rufus_stkno_id -- in case black part linked to more than 1 white part
+        )
+                        
+        SELECT *
+        FROM wip_and_finished
+        ORDER BY stkno_id, trans_date
+
+    ''', con = conn, index_col='stkno_id')
+
+orders.to_pickle(r'cache\orders_df.pkl')
+trans.to_pickle(r'cache\trans_df.pkl')

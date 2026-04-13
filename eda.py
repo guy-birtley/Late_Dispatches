@@ -66,6 +66,15 @@ FROM Quartiles;
 
 '''
 
+standard_prods_linked_to_non_standard_black_query = '''
+SELECT strc.rufus_product_id, prod.stck_stkno AS prod_stkno, prod.stck_prod_group AS prod_group, strc.rufus_component_id, comp.stck_stkno AS comp_stkno, comp.stck_prod_group AS comp_group
+FROM stck prod
+JOIN strc ON prod.rufus_stkno_id = strc.rufus_product_id
+JOIN stck comp ON comp.rufus_stkno_id = strc.rufus_component_id
+WHERE prod.stck_prod_group = 10001 AND comp.stck_prod_group != 99
+'''
+
+
 query = count_all_transactions_by_stkno
 
 rufus_engine = create_engine(r"sqlite:///C:/Python Projects/local.db")
