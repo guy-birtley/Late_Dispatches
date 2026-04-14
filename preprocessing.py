@@ -28,13 +28,19 @@ for col in ['on_hand', 'wip_on_hand']:
     trans_df[col] = trans_df.groupby(level=0)[col].ffill().fillna(0)
 
 
+#date elements for dense input
+date_meta_dict = {date: [
+        date.weekday(),
+        date.week,
+        np.sin(2 * np.pi * date.weekday() / 7),
+        np.cos(2 * np.pi * date.weekday() / 7),
+        np.sin(2 * np.pi * date.week / 52),
+        np.cos(2 * np.pi * date.week / 52)
+    ] for date in obs_dates}
 
-#date elements for list index
-date_meta_dict = {date: [date.weekday(), date.week] for date in obs_dates}
+print(f'Gathering observations from {obs_dates[0].date()} to {obs_dates[-1].date()}')
 
-print(f'Gathering observations from {obs_dates[0]} to {obs_dates[-1]}')
-
-X, dense, Y = [],[],[]
+X, dense, Y, stkno_ids = [],[],[],[]
 
 for obs_date in tqdm(obs_dates):
 
@@ -70,23 +76,25 @@ for obs_date in tqdm(obs_dates):
             + [len(this_prod_open_trans)] #number of transactions passed to transformer
         )
         Y.append([row[1]]) # 'late' must be called first in groupby
+        stkno_ids.append([row.Index]) # track stck_ids for later splitting
 
 
-tprint(len(Y), 'observations gathered.')
-
-tprint('Scaling data')
-X, x_scaler = scale(X)
-dense, dense_scaler = scale(dense)
-Y = np.stack(Y)
+tprint(f'{len(Y)} observations gathered.')
 
 tprint('Padding X')
 X, mask = pad_temporal_in(X)
+
+tprint('Scaling data')
+X, x_scaler = scale(X, mask = mask)
+dense, dense_scaler = scale(dense)
+Y = np.stack(Y)
+stkno_ids = np.stack(stkno_ids)
 
 tprint('Splitting datasets by true/false')
 true_obs = (Y.flatten() == 1)
 false_obs = (Y.flatten() == 0)
 obs_dict = {}
-for data, label in zip([X, Y, dense, mask], ['X', 'Y', 'dense', 'mask']):
+for data, label in zip([X, Y, dense, mask, stkno_ids], ['X', 'Y', 'dense', 'mask', 'stkno_ids']):
     obs_dict[f"{label}_true"] = data[true_obs]
     obs_dict[f"{label}_false"] = data[false_obs]
 

@@ -7,7 +7,7 @@ def tprint(text):
     print(datetime.now(), text)
 
 
-def scale(obs_list, categorical_cols = 0, scaler = None):
+def scale(obs_list, mask = None, categorical_cols = 0, scaler = None):
     '''
     params: list of observations, number of categorical cols at start of observation, scaler - if scaler not provided will fit one
     function: stacks list into array dimension, fills nan with 0, scales with minmaxscaler from final dimension
@@ -24,8 +24,11 @@ def scale(obs_list, categorical_cols = 0, scaler = None):
     if scaler is None:
         #Robust scaler scales by iqr so stable with outliers and centred on 0
         scaler = RobustScaler(with_centering=False) #different scaler for each input
-        #scaler = MinMaxScaler() #scale all inputs together to preserve relative importance
-        scaler.fit(x2d)
+        #scaler = MinMaxScaler() #scale all inputs together to preserve relative 
+        if mask is None:
+            scaler.fit(x2d)
+        else:
+            scaler.fit(x2d[mask.reshape(-1).astype(bool)]) #ignore padded 0s if mask provided
     x2d = scaler.transform(x2d) #transform in 2d
     x_scaled = x2d.reshape(orig_shape) #return to original shape
     if categorical_cols > 0:

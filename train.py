@@ -2,28 +2,45 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from helper import tprint, FoundationDataset, embModel
+from helper import tprint
+from model_classes import FoundationDataset, Model2, ModelDense
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": # for multiple spawns
+
     tprint('Loading data')
-    data = np.load(r"C:\Python Projects\ML Transactions\data_cache\obs_2025.npz")
+    data = np.load(r"cache\observations.npz")
 
-    temporal_test = data["temporal_test"]
+    #split data into train and validation sets
+    all_ids = np.unique(np.concatenate([data['stkno_ids_false'], data['stkno_ids_true']]))
+    val_ids = list(np.random.choice(all_ids, size=int(0.2 * len(all_ids)), replace=False)) #reserve 20% of stkno_ids for validation
 
-    train_dataset = FoundationDataset(temporal_test, data["dense_test"], data["mask_test"], data["Y_test"]) #change test to train if run preprocessing again
-    val_dataset = FoundationDataset(data["temporal_val"], data["dense_val"], data["mask_val"], data["Y_val"])
 
+    train_idx, val_idx = {}, {}
+    for suffix in ['true', 'false']:
+        val_mask = ~np.isin(data[f'stkno_ids_{suffix}'].flatten(), list(val_ids))
+        train_idx[suffix] = np.random.choice(np.where(~val_mask)[0], 20000, replace=True)
+        val_idx[suffix] = np.random.choice(np.where(val_mask)[0], 1000, replace=False)
+
+    train_data_list, val_data_list = [], []
+    for data_label in ['X', 'dense', 'mask', 'Y']:
+        train_data_list.append(np.concatenate([
+                data[f'{data_label}_true'][train_idx['true']],
+                data[f'{data_label}_false'][train_idx['false']]
+        ]))
+        val_data_list.append(np.concatenate([
+                data[f'{data_label}_true'][val_idx['true']],
+                data[f'{data_label}_false'][val_idx['false']]
+        ]))
+
+    train_dataset = FoundationDataset(*train_data_list) #change test to train if run preprocessing again
+    val_dataset = FoundationDataset(*val_data_list)
 
     tprint('Getting moment foundation model')
     
-
-    loc_dims = 6
-    portal_dims = 11
-    batch_size = 64 #instances to run in parallel
-
     #initialise model
-    model = embModel()
+    #model = Model2()
+    model = ModelDense()
 
     criterion = torch.nn.BCEWithLogitsLoss() # loss fn
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
@@ -38,7 +55,8 @@ if __name__ == "__main__":
     device = torch.device("xpu")
     model = model.to(device)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4) 
+    batch_size = 16
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0) 
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0)
 
 
@@ -47,13 +65,14 @@ if __name__ == "__main__":
         #use gpu for faster computation
         X= batch['X'].to(device, non_blocking = True)
         mask= batch['mask'].to(device, non_blocking = True)
+        dense = batch['dense'].to(device, non_blocking = True)
         Y  = batch['Y'].to(device, non_blocking = True)
 
         # forward [batch_size, n_channels, context length]
-        output = model(X, mask) # get logits from custom forward pass
-        
+        #output = model(X, mask, dense) # get logits from custom forward pass
+        output = model(dense)
         # backward
-        loss = criterion(output.logits, Y) # compare logits to Y
+        loss = model.criterion(output, Y) # compare logits to Y
         optimizer.zero_grad() # reset gradients
         loss.backward() # calculate gradients with backwards pass
         optimizer.step() # update weights
@@ -79,7 +98,7 @@ if __name__ == "__main__":
             
         #     model.train() # return to training mode
 
-        if batch_count % 50 == 0:
+        if batch_count % 100 == 0:
             tprint("Saving checkpoint...")
             # Create a dictionary to store everything needed to resume
             checkpoint = {
@@ -89,5 +108,15 @@ if __name__ == "__main__":
                 'loss': loss.item(),
             }
             # Overwrite the same file to save space
-            torch.save(checkpoint, "moment_checkpoint_latest.pt")
+            torch.save(checkpoint, r"cache\model_checkpoint.pt")
             tprint("Checkpoint saved.")
+
+tprint("Saving final copy...")
+# Create a dictionary to store everything needed to resume
+checkpoint = {
+    'batch_count': batch_count,
+    'model_state_dict': model.state_dict(),
+    'optimizer_state_dict': optimizer.state_dict(),
+    'loss': loss.item(),
+}
+torch.save(checkpoint, r"cache\model_checkpoint.pt")

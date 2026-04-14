@@ -1,6 +1,4 @@
-import torch
+import numpy as np
 
-device = torch.device("xpu")
-
-
-model = torch.load("moment_checkpoint_latest.pt", map_location=device)
+data = np.load(r"cache\observations.npz")
+print(data[f'stkno_ids_true'].shape)
