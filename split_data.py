@@ -1,34 +1,32 @@
-data = np.load(r"cache\all_obs.npz")
+import numpy as np
+from helper import tprint, y_labels
 
-tprint('Splitting datasets by true/false')
-true_obs = (Y.flatten() == 1)
-false_obs = (Y.flatten() == 0)
-obs_dict = {}
 
-for data, label in zip([X, Y, dense, mask, stkno_ids], ['X', 'Y', 'dense', 'mask', 'stkno_ids']):
-    obs_dict[f"{label}_true"] = data[true_obs]
-    obs_dict[f"{label}_false"] = data[false_obs]
+tprint('Loading data')
+all_obs = np.load(r"cache\all_obs.npz")
 
-data = obs_dict
+data = {}
+for y_group, y_vector in y_labels.items(): #for each y category
+    y_members = all_obs['Y'][:, y_vector.index(1)].astype(bool) #membership of category mask
+    for dataset in ['X', 'Y', 'dense', 'mask', 'stkno_ids']: #for each data set
+        data[f"{dataset}_{y_group}"] = all_obs[dataset][y_members] # where category is 1]
+
 
 #split data into train and validation sets
-all_ids = np.unique(np.concatenate([data['stkno_ids_false'], data['stkno_ids_true']]))
-val_ids = list(np.random.choice(all_ids, size=int(0.2 * len(all_ids)), replace=False)) #reserve 20% of stkno_ids for validation
+all_ids = np.unique(all_obs['stkno_ids'])
+test_ids = list(np.random.choice(all_ids, size=int(0.2 * len(all_ids)), replace=False)) #reserve 20% of stkno_ids for validation
 
 
-train_idx, val_idx = {}, {}
-for suffix in ['true', 'false']:
-    val_mask = ~np.isin(data[f'stkno_ids_{suffix}'].flatten(), list(val_ids))
-    train_idx[suffix] = np.random.choice(np.where(~val_mask)[0], 20000, replace=True)
-    val_idx[suffix] = np.random.choice(np.where(val_mask)[0], 1000, replace=False)
+train_idx, test_idx = {}, {}
+for y_group in y_labels:
+    is_test = np.isin(data[f'stkno_ids_{y_group}'].flatten(), list(test_ids))
+    train_idx[y_group] = np.random.choice(np.where(~is_test)[0], 1000, replace=True)
+    test_idx[y_group] = np.random.choice(np.where(is_test)[0], 100, replace=False)
 
-train_data_list, val_data_list = [], []
+train_data_dict, test_data_dict = {}, {}
 for data_label in ['X', 'dense', 'mask', 'Y']:
-    train_data_list.append(np.concatenate([
-            data[f'{data_label}_true'][train_idx['true']],
-            data[f'{data_label}_false'][train_idx['false']]
-    ]))
-    val_data_list.append(np.concatenate([
-            data[f'{data_label}_true'][val_idx['true']],
-            data[f'{data_label}_false'][val_idx['false']]
-    ]))
+    train_data_dict[data_label] = np.concatenate([data[f'{data_label}_{y_group}'][train_idx[y_group]] for y_group in y_labels])
+    test_data_dict[data_label] = np.concatenate([data[f'{data_label}_{y_group}'][test_idx[y_group]] for y_group in y_labels])
+
+np.savez_compressed(r'cache\train.npz', **train_data_dict)
+np.savez_compressed(r'cache\test.npz', **test_data_dict)

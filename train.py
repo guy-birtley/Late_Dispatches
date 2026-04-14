@@ -9,10 +9,11 @@ from model_classes import FoundationDataset, Model2, ModelDense
 if __name__ == "__main__": # for multiple spawns
 
     tprint('Loading data')
+    train_data_raw = np.load(r'cache\train.npz')
+    test_data_raw = np.load(r'cache\test.npz')
 
-
-    train_dataset = FoundationDataset(*train_data_list) #change test to train if run preprocessing again
-    val_dataset = FoundationDataset(*val_data_list)
+    train_dataset = FoundationDataset(**train_data_raw) #change test to train if run preprocessing again
+    test_dataset = FoundationDataset(**test_data_raw)
 
     tprint('Getting moment foundation model')
     
@@ -35,7 +36,7 @@ if __name__ == "__main__": # for multiple spawns
 
     batch_size = 16
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0) 
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0)
 
 
     tprint('Training')
@@ -59,20 +60,20 @@ if __name__ == "__main__": # for multiple spawns
 
         # if batch_count % 5 == 0 and batch_count != 0: # Validate every 5 batches
         #     model.eval() # Set to evaluation mode
-        #     val_loss = 0
+        #     test_loss = 0
             
         #     with torch.no_grad(): # Disable gradient calculation
-        #         for val_batch in val_dataloader:
-        #             vX = val_batch['X'].to(device)
-        #             vmask = val_batch['mask'].to(device)
-        #             vY = val_batch['Y'].to(device)
+        #         for test_batch in test_dataloader:
+        #             vX = test_batch['X'].to(device)
+        #             vmask = test_batch['mask'].to(device)
+        #             vY = test_batch['Y'].to(device)
                     
         #             v_out = model(vX, vmask)
         #             v_loss = criterion(v_out.logits, vY)
-        #             val_loss += v_loss.item()
+        #             test_loss += v_loss.item()
                     
-        #     avg_val_loss = val_loss / len(val_dataloader)
-        #     tprint(f"--- Random Sample Validation Loss: {avg_val_loss:.3f} ---")
+        #     avg_test_loss = test_loss / len(test_dataloader)
+        #     tprint(f"--- Random Sample Validation Loss: {avg_test_loss:.3f} ---")
             
         #     model.train() # return to training mode
 

@@ -4,13 +4,12 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 from momentfm import MOMENTPipeline
 
-
 class FoundationDataset(Dataset):
-    def __init__(self, X, dense, mask, Y):
-        self.X = torch.tensor(X, dtype=torch.float32)
-        self.dense = torch.tensor(dense, dtype=torch.float32)
-        self.mask = torch.tensor(mask, dtype=torch.float32)
-        self.Y = torch.tensor(Y, dtype=torch.float32)
+    def __init__(self, **kwargs):
+        self.X = torch.tensor(kwargs["X"], dtype=torch.float32)
+        self.dense = torch.tensor(kwargs["dense"], dtype=torch.float32)
+        self.mask = torch.tensor(kwargs["mask"], dtype=torch.float32)
+        self.Y = torch.tensor(kwargs["Y"], dtype=torch.float32)
 
     def __len__(self):
         return len(self.Y)
@@ -22,6 +21,8 @@ class FoundationDataset(Dataset):
             "mask": self.mask[idx],
             "Y": self.Y[idx]
         }
+
+
     
 
 class embModel(nn.Module):

@@ -3,6 +3,8 @@ from datetime import datetime
 import numpy as np
 from sklearn.preprocessing import RobustScaler
 
+prod_groups = (10001, 10003, 10005, 10006, 10009)
+
 y_labels = {
     'on_time' : [1, 0, 0, 0, 0],
     'no_stock' : [0, 1, 0, 0, 0],
@@ -47,7 +49,7 @@ def pad_temporal_in(temporal_in, temporal_length = 512): #pad temporal with 0s (
     temporal_padded = np.zeros((len(temporal_in), temporal_length, temporal_in[0].shape[1]), dtype=np.float32) # Pre-allocate zero-filled array
     mask = np.zeros((len(temporal_in), temporal_length), dtype=bool)
     for i, seq in enumerate(temporal_in):
-        if seq is None: #ignore empty rows
+        if (seq is None) or (len(seq) == 0): #ignore empty rows
             continue
         temporal_padded[i, -len(seq):, :] = seq #replace 0s with observation data
         mask[i, -len(seq):] = True

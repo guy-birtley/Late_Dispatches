@@ -1,13 +1,14 @@
 import pandas as pd
 from sqlalchemy import text, create_engine
 import pickle
+from helper import prod_groups
 
 rufus_engine = create_engine(r"sqlite:///C:/Python Projects/local.db")
 
 #create phantom parts view
 with rufus_engine.connect() as conn:
     conn.execute(text('DROP VIEW IF EXISTS phantom_stknos'))
-    conn.execute(text('''
+    conn.execute(text(f'''
         CREATE VIEW phantom_stknos AS
             SELECT stck.rufus_stkno_id AS raw_stkno_id, MIN(COALESCE(strc.rufus_component_id, stck.rufus_stkno_id)) AS non_phantom_stkno_id
             FROM stck
@@ -15,13 +16,13 @@ with rufus_engine.connect() as conn:
             LEFT JOIN strc ON strc.rufus_product_id = stck.rufus_stkno_id AND  stck.stck_user1 != ' ' AND stck.stck_prod_group != 10003
             -- get stck info about components
             LEFT JOIN stck phantom_comp ON phantom_comp.rufus_stkno_id = strc.rufus_component_id
-            WHERE (phantom_comp.stck_prod_group NOT LIKE '9%' -- filter phantom parts incorrectly set up against black products
+            WHERE (phantom_comp.stck_prod_group IN {prod_groups} -- filter phantom parts incorrectly set up against black products
                 OR phantom_comp.stck_prod_group IS NULL)
-                AND stck.stck_prod_group = 10001 -- just standard products for now (more transaction history)
+                AND stck.stck_prod_group IN {prod_groups} -- all relevant product groups
             GROUP BY stck.rufus_stkno_id
         '''))
 
-    orders = pd.read_sql('''
+    orders = pd.read_sql(f'''
         WITH sord_desp_date AS (
             SELECT s.rufus_stkno_id, s.sord_date_req, s.sord_order_date, s.sord_qty_req,
                     max(acaud_sys_date) AS desp_date -- get max despatch date for each order
@@ -41,7 +42,7 @@ with rufus_engine.connect() as conn:
     ''', con = conn, index_col = 'stkno_id')
     #slight descrepency here as partially fulfilled orders will still show full allocation until despatched but fuck it
 
-    trans = pd.read_sql('''
+    trans = pd.read_sql(f'''
         WITH ranked AS (
             SELECT
                 CASE WHEN (acaud_job LIKE '%STCK%' OR acaud_job LIKE '%STOCK%') AND acaud_job NOT LIKE '%TAKE%' THEN 1 ELSE 0 END AS correction,
@@ -51,11 +52,11 @@ with rufus_engine.connect() as conn:
                 acaud_qty,
                 acaud_open_balance,
                 ROW_NUMBER() OVER (
-                    PARTITION BY acaud_sys_date, acaud.rufus_stkno_id, acaud_qty>0, stck_prod_group
+                    PARTITION BY acaud_sys_date, acaud.rufus_stkno_id, acaud_qty>0
                     ORDER BY acaud_post_time DESC
                 ) AS row_num
             FROM acaud
-            JOIN stck ON stck.rufus_stkno_id = acaud.rufus_stkno_id AND stck_prod_group IN (10001, 99, 99999) -- need 99999 because of eda standard_prods_linked_to_non_standard_black_query
+            JOIN stck ON stck.rufus_stkno_id = acaud.rufus_stkno_id AND stck_prod_group IN {prod_groups + (99, 99999)} -- need 99999 because of eda standard_prods_linked_to_non_standard_black_query
         ),
         grouped AS (
             SELECT
@@ -79,7 +80,7 @@ with rufus_engine.connect() as conn:
             NULL AS wip_on_hand,
             0 AS wip
         FROM grouped
-        WHERE stck_prod_group = 10001
+        WHERE stck_prod_group IN {prod_groups}
                         
         UNION ALL
         
@@ -94,7 +95,7 @@ with rufus_engine.connect() as conn:
             1 AS wip
         FROM grouped
         JOIN strc ON strc.rufus_component_id = grouped.rufus_stkno_id
-        JOIN stck fg ON strc.rufus_product_id = fg.rufus_stkno_id AND fg.stck_prod_group = 10001  -- see note above (could be just = 99 if aligned properly)
+        JOIN stck fg ON strc.rufus_product_id = fg.rufus_stkno_id AND fg.stck_prod_group IN {prod_groups}  -- see note above (could be just = 99 if aligned properly)
         WHERE grouped.stck_prod_group IN (99, 99999)
         GROUP BY trans_date, qty, on_hand, grouped.rufus_stkno_id -- in case black part linked to more than 1 white part
         )

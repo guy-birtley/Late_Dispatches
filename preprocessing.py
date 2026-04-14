@@ -37,6 +37,7 @@ date_meta_dict = {date: [
 
 print(f'Gathering observations from {obs_dates[0].date()} to {obs_dates[-1].date()}')
 
+
 X, dense, Y, stkno_ids = [],[],[],[]
 
 for obs_date in tqdm(obs_dates):
@@ -80,7 +81,7 @@ for obs_date in tqdm(obs_dates):
             else:
                 y_label = y_labels['in_wip']
         elif len(all_this_trans[ #if there exists a transaction for this product
-                (all_this_trans['trans_date'].between(0, 14)) & # in the proceeding 14 days
+                (all_this_trans['trans_date'].between(0, 30)) & # in the proceeding 14 days
                 (all_this_trans['correction'] == 1) & # labelled as stock correction
                 (all_this_trans['wip'] == 0) & # for finished goods
                 (all_this_trans['qty'] < 0) # reducing stock
