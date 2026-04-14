@@ -44,6 +44,7 @@ with rufus_engine.connect() as conn:
     trans = pd.read_sql('''
         WITH ranked AS (
             SELECT
+                CASE WHEN (acaud_job LIKE '%STCK%' OR acaud_job LIKE '%STOCK%') AND acaud_job NOT LIKE '%TAKE%' THEN 1 ELSE 0 END AS correction,
                 acaud_sys_date,
                 acaud.rufus_stkno_id,
                 stck_prod_group,
@@ -58,17 +59,19 @@ with rufus_engine.connect() as conn:
         ),
         grouped AS (
             SELECT
+                correction,
                 acaud_sys_date AS trans_date,
                 rufus_stkno_id,
                 stck_prod_group,
                 SUM(acaud_qty) AS qty,
                 MAX(CASE WHEN row_num = 1 THEN acaud_open_balance + acaud_qty END) AS on_hand -- closing balance of the day
             FROM ranked
-            GROUP BY acaud_sys_date, rufus_stkno_id, acaud_qty > 0, stck_prod_group
+            GROUP BY acaud_sys_date, rufus_stkno_id, acaud_qty > 0, stck_prod_group, correction
         ),
         wip_and_finished AS (
         -- finished transations
         SELECT
+            correction,
             trans_date,
             rufus_stkno_id AS stkno_id,
             qty,
@@ -82,6 +85,7 @@ with rufus_engine.connect() as conn:
         
         -- wip transactions
         SELECT
+            0 AS correction,
             trans_date,
             MIN(strc.rufus_product_id) AS stkno_id,
             qty,

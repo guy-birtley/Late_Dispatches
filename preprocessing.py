@@ -1,6 +1,6 @@
 import pandas as pd
 from tqdm import tqdm
-from helper import tprint, scale, pad_temporal_in
+from helper import tprint, scale, pad_temporal_in, y_labels
 import numpy as np
 import pickle
 
@@ -55,27 +55,47 @@ for obs_date in tqdm(obs_dates):
     #put min/max due dates as integers relative to obs_date
     open_orders['req_date'] = (open_orders['req_date'] - obs_date).apply(lambda x: x.dt.days)
     open_orders.columns = ['_'.join(col) for col in open_orders.columns.values] #multi to single columns
-    
+
     #get transactions of open order parts before observation date
-    open_trans = trans_df.copy()[(trans_df.index.isin(open_orders.index)) # part in open orders
-                                 & (trans_df['trans_date'] < obs_date) # transactions occured before obs date
-                                ].groupby(level=0).tail(512) #limit to 512 (max for MOMENT transformer)
+    open_trans = trans_df.copy()[trans_df.index.isin(open_orders.index)] # part in open orders
+    
     open_trans['trans_date'] = (open_trans['trans_date'] - obs_date).dt.days
 
     #get metadata about date
     date_meta = date_meta_dict[obs_date]
 
     for row in open_orders.itertuples(): #group by orders to train as no trans history is valid input
-        this_prod_open_trans = open_trans.loc[row.Index]
-        on_hand_qtys = [0,0] if this_prod_open_trans.empty else list(this_prod_open_trans[['on_hand', 'wip_on_hand']].iloc[-1])
-        X.append(this_prod_open_trans.to_numpy())
+        all_this_trans = open_trans.loc[row.Index] # all transactions
+        this_trans = all_this_trans[all_this_trans['trans_date'] < 0].tail(512) # last 512 transactions in the past
+        on_hand_qtys = [0,0] if this_trans.empty else list(this_trans[['on_hand', 'wip_on_hand']].iloc[-1]) #most recent stock and wip qtys
+
+        late = row[1]
+        min_date_req = row[4]
+        qty_req = row[2]
+        if late == 0:
+            y_label = y_labels['on_time']
+        elif min_date_req < 0:
+            y_label = y_labels['already_overdue']
+        elif on_hand_qtys[0] < qty_req:
+            y_label = y_labels['no_stock']
+        elif len(all_this_trans[ #if there exists a transaction for this product
+                (all_this_trans['trans_date'].between(0, 14)) & # in the proceeding 14 days
+                (all_this_trans['correction'] == 1) & # labelled as stock correction
+                (all_this_trans['wip'] == 0) & # for finished goods
+                (all_this_trans['qty'] < 0) # reducing stock
+            ]) > 0:
+            y_label = y_labels['stock_wrong']
+        else:
+            y_label = y_labels['missed_dispatch']
+
+        Y.append(y_label) # 'late' must be called first in groupby
+        X.append(this_trans.to_numpy())
         dense.append(
             list(row[2:]) # other elements from open_orders
             + on_hand_qtys # stock and wip levels
             + date_meta # info about date
-            + [len(this_prod_open_trans)] #number of transactions passed to transformer
+            + [len(this_trans)] #number of transactions passed to transformer
         )
-        Y.append([row[1]]) # 'late' must be called first in groupby
         stkno_ids.append([row.Index]) # track stck_ids for later splitting
 
 
@@ -90,18 +110,14 @@ dense, dense_scaler = scale(dense)
 Y = np.stack(Y)
 stkno_ids = np.stack(stkno_ids)
 
-tprint('Splitting datasets by true/false')
-true_obs = (Y.flatten() == 1)
-false_obs = (Y.flatten() == 0)
+
 obs_dict = {}
-for data, label in zip([X, Y, dense, mask, stkno_ids], ['X', 'Y', 'dense', 'mask', 'stkno_ids']):
-    obs_dict[f"{label}_true"] = data[true_obs]
-    obs_dict[f"{label}_false"] = data[false_obs]
-
-
 tprint('Saving observations to compressed file')
-np.savez_compressed(rf"cache\observations.npz", **obs_dict)
+for data, label in zip([X, Y, dense, mask, stkno_ids], ['X', 'Y', 'dense', 'mask', 'stkno_ids']):
+    obs_dict[label] = data
 
+
+np.savez_compressed(rf"cache\all_obs.npz", **obs_dict)
 
 tprint('Saving meta data to pickle file')
 with open(r"cache\preprocess_meta.pkl", "wb") as f:

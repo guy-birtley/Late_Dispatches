@@ -1,4 +1,6 @@
 import numpy as np
 
-data = np.load(r"cache\observations.npz")
-print(data[f'stkno_ids_true'].shape)
+data = np.load(r"cache\all_obs.npz")
+
+Y = data['Y']
+print(Y.sum(axis=0))

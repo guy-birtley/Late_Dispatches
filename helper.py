@@ -3,6 +3,14 @@ from datetime import datetime
 import numpy as np
 from sklearn.preprocessing import RobustScaler
 
+y_labels = {
+    'on_time' : [1, 0, 0, 0, 0],
+    'already_overdue' : [0, 1, 0, 0, 0],
+    'no_stock' : [0, 0, 1, 0, 0],
+    'stock_wrong' : [0, 0, 0, 1, 0],
+    'missed_dispatch' : [0, 0, 0, 0, 1]
+}
+
 def tprint(text):
     print(datetime.now(), text)
 
