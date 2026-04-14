@@ -20,9 +20,6 @@ trans_df['trans_date'] = pd.to_datetime(trans_df['trans_date'])
 order_date_cols = ['req_date','order_date','desp_date']
 orders_df[order_date_cols] = orders_df[order_date_cols].apply(pd.to_datetime)
 
-# get forecast window (forecast horizon business days before due)
-orders_df['forecast_window'] = orders_df['req_date'] - pd.offsets.BusinessDay(n=forecast_horizon)
-
 #forward fill stock on hand figures
 for col in ['on_hand', 'wip_on_hand']:
     trans_df[col] = trans_df.groupby(level=0)[col].ffill().fillna(0)
@@ -43,18 +40,21 @@ print(f'Gathering observations from {obs_dates[0].date()} to {obs_dates[-1].date
 X, dense, Y, stkno_ids = [],[],[],[]
 
 for obs_date in tqdm(obs_dates):
-
+    forecast_horizon_date = obs_date + pd.offsets.BusinessDay(n=forecast_horizon)
     #get open orders as of midnight on obs_date
-    open_orders = orders_df.copy()[(orders_df['forecast_window'] <= obs_date) & #due in less than forecast_horizon working days
+    open_orders = orders_df.copy()[(orders_df['req_date'] <= forecast_horizon_date) & #due in less than forecast_horizon working days
                             (orders_df['desp_date'] >= obs_date) # despatched after observation
+
                         ].groupby(level = 0).agg({
-                            'late':'max', # if any open order for that product shipped late
+                            # 'late':'max', # if any open order for that product shipped late
+                            'desp_date': 'max',
                             'qty':['sum','count'], #total qty and total orders
                             'req_date':['min', 'max'] #first and last due date of order
                         })
     #put min/max due dates as integers relative to obs_date
     open_orders['req_date'] = (open_orders['req_date'] - obs_date).apply(lambda x: x.dt.days)
     open_orders.columns = ['_'.join(col) for col in open_orders.columns.values] #multi to single columns
+    open_orders['desp_date_max'] = (open_orders['desp_date_max'] > forecast_horizon_date).astype(int) #shipped after forecast_window
 
     #get transactions of open order parts before observation date
     open_trans = trans_df.copy()[trans_df.index.isin(open_orders.index)] # part in open orders
@@ -69,15 +69,16 @@ for obs_date in tqdm(obs_dates):
         this_trans = all_this_trans[all_this_trans['trans_date'] < 0].tail(512) # last 512 transactions in the past
         on_hand_qtys = [0,0] if this_trans.empty else list(this_trans[['on_hand', 'wip_on_hand']].iloc[-1]) #most recent stock and wip qtys
 
-        late = row[1]
+        miss = row[1]
         min_date_req = row[4]
         qty_req = row[2]
-        if late == 0:
+        if miss == 0:
             y_label = y_labels['on_time']
-        elif min_date_req < 0:
-            y_label = y_labels['already_overdue']
         elif on_hand_qtys[0] < qty_req:
-            y_label = y_labels['no_stock']
+            if sum(on_hand_qtys) < qty_req:
+                y_label = y_labels['no_stock']
+            else:
+                y_label = y_labels['in_wip']
         elif len(all_this_trans[ #if there exists a transaction for this product
                 (all_this_trans['trans_date'].between(0, 14)) & # in the proceeding 14 days
                 (all_this_trans['correction'] == 1) & # labelled as stock correction
@@ -110,6 +111,7 @@ dense, dense_scaler = scale(dense)
 Y = np.stack(Y)
 stkno_ids = np.stack(stkno_ids)
 
+print(Y.sum(axis=0))
 
 obs_dict = {}
 tprint('Saving observations to compressed file')
