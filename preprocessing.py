@@ -68,6 +68,9 @@ for obs_date in tqdm(obs_dates):
     for row in open_orders.itertuples(): #group by orders to train as no trans history is valid input
         all_this_trans = open_trans.loc[row.Index] # all transactions
         this_trans = all_this_trans[all_this_trans['trans_date'] < 0].tail(512) # last 512 transactions in the past
+        if len(this_trans) == 0:
+            continue
+        
         on_hand_qtys = [0,0] if this_trans.empty else list(this_trans[['on_hand', 'wip_on_hand']].iloc[-1]) #most recent stock and wip qtys
 
         miss = row[1]

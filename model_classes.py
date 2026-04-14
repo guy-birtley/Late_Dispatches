@@ -103,10 +103,10 @@ class Model2(nn.Module):
         
         self.fc1 = nn.Linear(64 + 64, 64)
         self.fc2 = nn.Linear(64, 16)
-        self.out_layer = nn.Linear(16, 1)
+        self.out_layer = nn.Linear(16, 5)
         
         self.relu = nn.ReLU()
-        self.criterion = nn.BCEWithLogitsLoss()
+        self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, X, mask, dense_in):
         # 1. Prepare X for MOMENT: (Batch, Channels, Length)
@@ -135,7 +135,7 @@ class Model2(nn.Module):
     
     def predict(self, x, mask, dense_in):
         logits = self.forward(x, mask, dense_in)
-        return torch.sigmoid(logits) # 0-1 probability
+        return torch.softmax(logits, dim=1) # predict class membership (to predict probability of each class membership, use sigmoid)
 
 class ModelDense(nn.Module):
     #model just testing a dense network without temporal features

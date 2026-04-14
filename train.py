@@ -18,11 +18,10 @@ if __name__ == "__main__": # for multiple spawns
     tprint('Getting moment foundation model')
     
     #initialise model
-    #model = Model2()
-    model = ModelDense()
+    model = Model2()
+    #model = ModelDense()
 
-    criterion = torch.nn.BCEWithLogitsLoss() # loss fn
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
 
     #lower triangle causal mask - used if training multiple classifiers on same history
     # causal_mask = torch.tril(torch.ones((context_window, context_window), dtype=torch.bool)).unsqueeze(0).expand(batch_size, -1, -1)
@@ -48,8 +47,8 @@ if __name__ == "__main__": # for multiple spawns
         Y  = batch['Y'].to(device, non_blocking = True)
 
         # forward [batch_size, n_channels, context length]
-        #output = model(X, mask, dense) # get logits from custom forward pass
-        output = model(dense)
+        output = model(X, mask, dense) # get logits from custom forward pass
+        #output = model(dense)
         # backward
         loss = model.criterion(output, Y) # compare logits to Y
         optimizer.zero_grad() # reset gradients
