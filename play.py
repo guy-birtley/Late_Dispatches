@@ -1,6 +1,7 @@
 
-from sqlalchemy import text, create_engine
-import pandas as pd
+# from sqlalchemy import text, create_engine
+# import pandas as pd
+
 
 # rufus_engine = create_engine(r"sqlite:///C:/Python Projects/local.db")
 
@@ -16,4 +17,8 @@ import pandas as pd
 #             WHERE (phantom_comp.stck_prod_group NOT LIKE '9%' -- filter phantom parts incorrectly set up against black products
 #                 OR phantom_comp.stck_prod_group IS NULL)
 #                 AND stck.rufus_stkno_id = 26003''', con = conn))
-    
+
+
+
+
+if (X.std(dim=-1) == 0).any():

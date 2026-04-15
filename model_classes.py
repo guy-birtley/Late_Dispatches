@@ -90,45 +90,46 @@ class Model2(nn.Module):
             },
         )
         self.foundation_model.init()
+        
+        # # Freeze foundation parameters
+        # for param in self.foundation_model.parameters():
+        #     param.requires_grad = False
 
-        # Freeze foundation parameters
-        for param in self.foundation_model.parameters():
-            param.requires_grad = False
+        #train only final block
+        for name, param in self.foundation_model.named_parameters():
+            param.requires_grad = "encoder.final_layer_norm" in name # or "encoder.block.11" in name # cannot unfreeze last block :(
+
+        # Dense layers after foundation model
+        self.moment_proj = nn.Linear(768, 64) # project 768 output of embedding moment to 64 nuerons
+        self.dense_proj = nn.Linear(13, 64) # project 13 dense layer parameters to 64
         
-        # Define the actual layers to be trained
-        # MOMENT-Base typically has an embedding dimension of 512
-        # We have 5 channels, so flattened/pooled it is often 512
-        self.moment_proj = nn.Linear(768, 64)
-        self.dense_proj = nn.Linear(13, 64) # Assuming your 13 metadata features
+        self.fc1 = nn.Linear(128, 64) # dense layer after concatenation
+        self.fc2 = nn.Linear(64, 16) # another dense layer
+        self.out_layer = nn.Linear(16, 5) # output layer for 5 classes
         
-        self.fc1 = nn.Linear(64 + 64, 64)
-        self.fc2 = nn.Linear(64, 16)
-        self.out_layer = nn.Linear(16, 5)
-        
-        self.relu = nn.ReLU()
+        self.relu = self.relu = nn.ReLU() # nn.LeakyReLU(0.1) # leaky relu allows some negatives through incase distribution killing learning
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, X, mask, dense_in):
-        # 1. Prepare X for MOMENT: (Batch, Channels, Length)
+        # Change dimensions of X for MOMENT: (Batch, Channels, Length)
         x = X.permute(0, 2, 1)
 
-        # 2. Get embeddings: returns object with .embeddings attribute
-        # Shape: [batch, channels, d_model] or [batch, d_model] depending on pooling
-        moment_out = self.foundation_model(x_enc=x, input_mask=mask)
-        
-        # Most MOMENT tasks pool to [batch, d_model]. 
-        # If it returns [batch, channels, d_model], we mean-pool the channels:
-        z_moment = moment_out.embeddings
-        if z_moment.dim() == 3:
-            z_moment = z_moment.mean(dim=1)
+        # Get embeddings from moment: [batch, channels, moment output dimension]
+        #moment_out = self.foundation_model(x_enc=x, input_mask=mask)
+
+        moment_out = self.foundation_model(x_enc=x, input_mask=mask).embeddings
+    
+        # Pool the outputs: [batch, moment output dimension]
+        # z_moment = moment_out.embeddings.mean(dim=1)
 
         # 3. Process both streams
-        z_moment = self.relu(self.moment_proj(z_moment))
+        z_moment = self.relu(self.moment_proj(moment_out))
         z_dense = self.relu(self.dense_proj(dense_in))
 
         # 4. Concatenate and Head
         combined = torch.cat([z_moment, z_dense], dim=-1)
-        
+        #combined = torch.cat([z_moment, torch.zeros_like(z_dense)], dim=-1)
+
         x = self.relu(self.fc1(combined))
         x = self.relu(self.fc2(x))
         return self.out_layer(x)
@@ -136,6 +137,7 @@ class Model2(nn.Module):
     def predict(self, x, mask, dense_in):
         logits = self.forward(x, mask, dense_in)
         return torch.softmax(logits, dim=1) # predict class membership (to predict probability of each class membership, use sigmoid)
+
 
 class ModelDense(nn.Module):
     #model just testing a dense network without temporal features

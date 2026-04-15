@@ -21,8 +21,6 @@ if __name__ == "__main__": # for multiple spawns
     model = Model2()
     #model = ModelDense()
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
-
     #lower triangle causal mask - used if training multiple classifiers on same history
     # causal_mask = torch.tril(torch.ones((context_window, context_window), dtype=torch.bool)).unsqueeze(0).expand(batch_size, -1, -1)
 
@@ -37,6 +35,7 @@ if __name__ == "__main__": # for multiple spawns
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0) 
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0)
 
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
     tprint('Training')
     for batch_count, batch in enumerate(tqdm(train_dataloader, desc="Training")):
@@ -53,10 +52,22 @@ if __name__ == "__main__": # for multiple spawns
         loss = model.criterion(output, Y) # compare logits to Y
         optimizer.zero_grad() # reset gradients
         loss.backward() # calculate gradients with backwards pass
-        optimizer.step() # update weights
-        
-        print(f"\n Batch {batch_count} loss: {loss.item():.3f}")
 
+        # print gradients
+        if batch_count % 10 == 0:
+            for name, param in model.named_parameters():
+                if param.requires_grad:
+                    if param.grad is not None:
+                        print(f"{name} grad: {param.grad.abs().mean().item():.8f}")
+                    else:
+                        print(f"!!! {name} has NO GRADIENT !!!")
+
+        optimizer.step() # update weights
+        accuracy = (torch.argmax(output, dim=1) == torch.argmax(Y, dim=1)).float().mean()
+        print(f"\n Batch {batch_count}; loss {loss.item():.3f}; accuracy {accuracy}")
+        
+
+        
         # if batch_count % 5 == 0 and batch_count != 0: # Validate every 5 batches
         #     model.eval() # Set to evaluation mode
         #     test_loss = 0
@@ -76,7 +87,7 @@ if __name__ == "__main__": # for multiple spawns
             
         #     model.train() # return to training mode
 
-        if batch_count % 100 == 0:
+        if batch_count % 1000 == 0:
             tprint("Saving checkpoint...")
             # Create a dictionary to store everything needed to resume
             checkpoint = {
