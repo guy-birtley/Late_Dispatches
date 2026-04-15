@@ -8,7 +8,7 @@ import subprocess
 ##### static parameters #####
 
 forecast_horizon = 2
-obs_dates = pd.date_range(pd.Timestamp(2025, 1, 1), pd.Timestamp(2025, 12, 20), freq='B')
+obs_dates = pd.date_range(pd.Timestamp(2024, 1, 1), pd.Timestamp(2025, 12, 20), freq='B')
 
 tprint('Reading data and preprocessing')
 

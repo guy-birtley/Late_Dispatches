@@ -5,31 +5,47 @@ from helper import tprint, y_labels
 tprint('Loading data')
 all_obs = np.load(r"cache\all_obs.npz")
 
-tprint('Sampling groups')
-data = {}
-for y_group, y_vector in y_labels.items(): #for each y category
-    y_members = all_obs['Y'][:, y_vector.index(1)].astype(bool) #membership of category mask
-    for dataset in all_obs.keys(): #for each data set
-        data[f"{dataset}_{y_group}"] = all_obs[dataset][y_members] # where category is 1]
+tprint('Splitting groups by Y category')
+
+# data = {}
+# for y_group, y_vector in y_labels.items(): #for each y category
+#     y_members = all_obs['Y'][:, y_vector.index(1)].astype(bool) #membership of category mask
+#     for dataset in all_obs.keys(): #for each data set
+#         data[f"{dataset}_{y_group}"] = all_obs[dataset][y_members] # where category is 1]
+
+# group_indices = {name: i for i, name in enumerate(y_labels.keys())}
+
+# Generate the data dictionary using comprehension
+data = {
+    f"{dataset}_{y_group}": all_obs[dataset][all_obs['Y'][:, y_vector.index(1)].astype(bool)] #membership of y category
+    for y_group, y_vector in y_labels.items() # for each y group
+    for dataset in all_obs.keys() # for each dataset
+}
 
 
-#split data into train and validation sets
+tprint('Creating test and train groups by sampling each Y category')
 all_ids = np.unique(all_obs['stkno_ids'])
 #need a way to generate samples with representation across each y class (and each product group?)
 #test_ids = list(np.random.choice(all_ids, size=int(0.2 * len(all_ids)), replace=False)) #reserve 20% of stkno_ids for validation
-test_ids = np.zeros(len(all_ids))
+test_ids = []
 
 train_idx, test_idx = {}, {}
 for y_group in y_labels:
+    # stkno_id is in test set filter
     is_test = np.isin(data[f'stkno_ids_{y_group}'].flatten(), list(test_ids))
-    train_idx[y_group] = np.random.choice(np.where(~is_test)[0], 1000, replace=True)
-    #test_idx[y_group] = np.random.choice(np.where(is_test)[0], 100, replace=False)
+
+    #filter for all sets
+    all_filter = np.sum(data[f'mask_{y_group}'], axis = 1)>=100 #series larger than 100 samples
+
+    train_idx[y_group] = np.random.choice(np.where(~is_test & all_filter)[0], 2000, replace=False)
+    #test_idx[y_group] = np.random.choice(np.where(is_test & all_filter)[0], 100, replace=False)
 
 
 train_data_dict, test_data_dict = {}, {}
 for data_label in ['X', 'dense', 'mask', 'Y']:
     train_data_dict[data_label] = np.concatenate([data[f'{data_label}_{y_group}'][train_idx[y_group]] for y_group in y_labels])
     #test_data_dict[data_label] = np.concatenate([data[f'{data_label}_{y_group}'][test_idx[y_group]] for y_group in y_labels])
+
 
 tprint('Saving data')
 np.savez_compressed(r'cache\train.npz', **train_data_dict)
