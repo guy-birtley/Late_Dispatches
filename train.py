@@ -40,8 +40,8 @@ if __name__ == "__main__": # for multiple spawns
     tprint('Training')
     for batch_count, batch in enumerate(tqdm(train_dataloader, desc="Training")):
         #use gpu for faster computation
-        X= batch['X'].to(device, non_blocking = True)
-        mask= batch['mask'].to(device, non_blocking = True)
+        X = batch['X'].to(device, non_blocking = True)
+        mask = batch['mask'].to(device, non_blocking = True)
         dense = batch['dense'].to(device, non_blocking = True)
         Y  = batch['Y'].to(device, non_blocking = True)
 
@@ -52,15 +52,16 @@ if __name__ == "__main__": # for multiple spawns
         loss = model.criterion(output, Y) # compare logits to Y
         optimizer.zero_grad() # reset gradients
         loss.backward() # calculate gradients with backwards pass
-
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) #clip gradients to prevent explosion
+        
         # print gradients
         if batch_count % 10 == 0:
             for name, param in model.named_parameters():
                 if param.requires_grad:
                     if param.grad is not None:
-                        print(f"{name} grad: {param.grad.abs().mean().item():.8f}")
+                        print(f"{name} grad: {param.grad.abs().mean().item():.5f}")
                     else:
-                        print(f"!!! {name} has NO GRADIENT !!!")
+                        print(f"{name} has NO GRADIENT!")
 
         optimizer.step() # update weights
         accuracy = (torch.argmax(output, dim=1) == torch.argmax(Y, dim=1)).float().mean()

@@ -3,6 +3,7 @@ from tqdm import tqdm
 from helper import tprint, scale, pad_temporal_in, y_labels
 import numpy as np
 import pickle
+import subprocess
 
 ##### static parameters #####
 
@@ -68,7 +69,8 @@ for obs_date in tqdm(obs_dates):
     for row in open_orders.itertuples(): #group by orders to train as no trans history is valid input
         all_this_trans = open_trans.loc[row.Index] # all transactions
         this_trans = all_this_trans[all_this_trans['trans_date'] < 0].tail(512) # last 512 transactions in the past
-        if len(this_trans) == 0:
+        
+        if len(this_trans) < 10: # if <5 -> training goes to nan
             continue
         
         on_hand_qtys = [0,0] if this_trans.empty else list(this_trans[['on_hand', 'wip_on_hand']].iloc[-1]) #most recent stock and wip qtys
@@ -115,6 +117,7 @@ dense, dense_scaler = scale(dense)
 Y = np.stack(Y)
 stkno_ids = np.stack(stkno_ids)
 
+
 print(Y.sum(axis=0))
 
 obs_dict = {}
@@ -133,3 +136,4 @@ with open(r"cache\preprocess_meta.pkl", "wb") as f:
                   'columns': open_trans.columns}, f)
      
 tprint('Done')
+

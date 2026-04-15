@@ -99,40 +99,48 @@ class Model2(nn.Module):
         for name, param in self.foundation_model.named_parameters():
             param.requires_grad = "encoder.final_layer_norm" in name # or "encoder.block.11" in name # cannot unfreeze last block :(
 
-        # Dense layers after foundation model
-        self.moment_proj = nn.Linear(768, 64) # project 768 output of embedding moment to 64 nuerons
-        self.dense_proj = nn.Linear(13, 64) # project 13 dense layer parameters to 64
+        found_neurons = 256
+        dense_neurons = 64
+
+        # process output of MOMENT
+        self.found_branch = nn.Sequential(
+            nn.Linear(768, found_neurons), # project 768 output MOMENT to moment_neurons
+            nn.ReLU(),
+            nn.BatchNorm1d(found_neurons), #normalise batch
+        )
+
+        self.dense_branch = nn.Sequential(
+            nn.Linear(13, dense_neurons), # project 13 dense layer parameters to dense_neurons
+            nn.BatchNorm1d(dense_neurons), # normalise batches to prevent dense layer dominating
+            nn.ReLU(),
+            nn.Dropout(0.5) # dropout to reduce reliance on dense inputs
+        )
         
-        self.fc1 = nn.Linear(128, 64) # dense layer after concatenation
-        self.fc2 = nn.Linear(64, 16) # another dense layer
-        self.out_layer = nn.Linear(16, 5) # output layer for 5 classes
-        
-        self.relu = self.relu = nn.ReLU() # nn.LeakyReLU(0.1) # leaky relu allows some negatives through incase distribution killing learning
+        self.combine_branch = nn.Sequential(
+            nn.Linear(found_neurons + dense_neurons, 64), # dense layer after concatenation
+            nn.ReLU(),
+            nn.Linear(64, 16), # another dense layer
+            nn.ReLU(),
+            nn.Linear(16, 5) # output layer for 5 classes
+        )
+
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, X, mask, dense_in):
-        # Change dimensions of X for MOMENT: (Batch, Channels, Length)
-        x = X.permute(0, 2, 1)
 
-        # Get embeddings from moment: [batch, channels, moment output dimension]
-        #moment_out = self.foundation_model(x_enc=x, input_mask=mask)
+        #foundation stream
+        x = X.permute(0, 2, 1) # Change dimensions of X for MOMENT: [Batch, Channels, Length]
+        found_out_raw = self.foundation_model(x_enc=x, input_mask=mask).embeddings #get embeddings [batch, channels, moment output dimension]
+        found_branch_out = self.found_branch(found_out_raw)
+        
+        # dense stream
+        dense_branch_out = self.dense_branch(dense_in)
 
-        moment_out = self.foundation_model(x_enc=x, input_mask=mask).embeddings
-    
-        # Pool the outputs: [batch, moment output dimension]
-        # z_moment = moment_out.embeddings.mean(dim=1)
+        # concatenate streams
+        combined = torch.cat([found_branch_out, dense_branch_out], dim=-1)
+        #combined = torch.cat([found_branch_out, torch.zeros_like(dense_branch_out)], dim=-1) # test to see what it learns if no outputs
 
-        # 3. Process both streams
-        z_moment = self.relu(self.moment_proj(moment_out))
-        z_dense = self.relu(self.dense_proj(dense_in))
-
-        # 4. Concatenate and Head
-        combined = torch.cat([z_moment, z_dense], dim=-1)
-        #combined = torch.cat([z_moment, torch.zeros_like(z_dense)], dim=-1)
-
-        x = self.relu(self.fc1(combined))
-        x = self.relu(self.fc2(x))
-        return self.out_layer(x)
+        return self.combine_branch(combined)
     
     def predict(self, x, mask, dense_in):
         logits = self.forward(x, mask, dense_in)
