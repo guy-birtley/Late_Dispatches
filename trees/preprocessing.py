@@ -9,6 +9,7 @@ import subprocess
 
 forecast_horizon = 2
 obs_dates = pd.date_range(pd.Timestamp(2025, 1, 1), pd.Timestamp(2025, 12, 20), freq='B')
+max_placeholder = np.iinfo(np.int32).max
 
 tprint('Reading data and preprocessing')
 
@@ -73,11 +74,12 @@ for obs_date in tqdm(obs_dates):
         this_trans = all_this_trans[(all_this_trans['trans_date'] < 0)] #and trans of this year if doing multiple years
 
         if this_trans.empty:
-            transaction_predictors = [np.inf, 0,0,0,0,0,0]
+            transaction_predictors = [max_placeholder, 0,0,0,0,0,0]
         else:
             on_hand_qtys = list(this_trans[['on_hand', 'wip_on_hand']].iloc[-1])
             transaction_predictors = [
-                this_trans['trans_date'].iloc[-1], #days since last transaction
+                this_trans['trans_date'].iloc[-1], #days since last transaction,
+                len(this_trans),
                 on_hand_qtys[0]/ row.qty_sum, # order_to_stck_ratio
                 on_hand_qtys[0], #most recent stock on hand
                 on_hand_qtys[1], #most recent wip on hand
@@ -86,12 +88,12 @@ for obs_date in tqdm(obs_dates):
                 int(on_hand_qtys[0] - min(this_trans.loc[this_trans['wip'] == 0, 'on_hand'], default=0) >= row.qty_sum) #sufficient_without_stocktake
             ]
 
-        dense_input = (list(row[2:]) # other elements from open_orders
-            + transaction_predictors #factors derived from transactions
-            + date_meta # info about date
-            + [len(this_trans)] #number of transactions this year
-            + stck_dict[row.Index] 
-        ) #number of transactions passed to transformer
+        dense_input = (
+            list(row[2:]) #order data (not including target row[1])
+            + transaction_predictors #  transaction data
+            + date_meta # date data
+            + stck_dict[row.Index] # part data
+        )
         
         if row.desp_date_max == 0:
             y_label = y_labels['on_time']

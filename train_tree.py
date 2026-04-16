@@ -15,8 +15,6 @@ if __name__ == "__main__": # for multiple spawns
 
     Y = np.argmax(train_data_raw['Y'], axis=1) #labels one_hot encoding
     dense = train_data_raw['dense']
-    print(dense.shape)
-    print(Y.ravel().mean())
     
     tpot = TPOTClassifier(
         generations=100,

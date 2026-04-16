@@ -40,5 +40,5 @@ for data_label in ['dense', 'Y']: #'X', 'mask'
 
 
 tprint('Saving data')
-np.savez_compressed(r'cache\train.npz', **train_data_dict)
+np.savez_compressed(r'cache\tree_train.npz', **train_data_dict)
 #np.savez_compressed(r'cache\test.npz', **test_data_dict)
