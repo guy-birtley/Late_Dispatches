@@ -1,15 +1,13 @@
 import numpy as np
 from helper import tprint, y_labels
 
-y_labels = {'shipped': 0, 'missed': 1}
-
 tprint('Loading data')
-all_obs = np.load(r"cache\all_obs.npz")
+all_obs = np.load(r"cache\tree_all_obs.npz")
 
 tprint('Splitting groups by Y category')
 # Generate the data dictionary using comprehension
 data = {
-    f"{dataset}_{y_group}": all_obs[dataset][all_obs['Y'][:, 0] == y_vector] #y_vector.index(1)].astype(bool)] #membership of y category
+    f"{dataset}_{y_group}": all_obs[dataset][all_obs['Y'][:, y_vector.index(1)].astype(bool)] #membership of y category # binary - 0] == y_vector] #
     for y_group, y_vector in y_labels.items() # for each y group
     for dataset in all_obs.keys() # for each dataset
 }
@@ -31,12 +29,12 @@ for y_group in y_labels:
     #filter for all sets (series <5 makes transformer output nan)
     #all_filter = np.sum(data[f'mask_{y_group}'], axis = 1)>=100 #series larger than 100 samples
     all_filter = True
-    train_idx[y_group] = np.random.choice(np.where(~is_test & all_filter)[0], 2000, replace=False)
+    train_idx[y_group] = np.random.choice(np.where(~is_test & all_filter)[0], 1300, replace=False)
     #test_idx[y_group] = np.random.choice(np.where(is_test & all_filter)[0], 100, replace=False)
 
 
 train_data_dict, test_data_dict = {}, {}
-for data_label in ['X', 'dense', 'mask', 'Y']:
+for data_label in ['dense', 'Y']: #'X', 'mask'
     train_data_dict[data_label] = np.concatenate([data[f'{data_label}_{y_group}'][train_idx[y_group]] for y_group in y_labels])
     #test_data_dict[data_label] = np.concatenate([data[f'{data_label}_{y_group}'][test_idx[y_group]] for y_group in y_labels])
 
