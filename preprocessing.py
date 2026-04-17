@@ -1,20 +1,21 @@
 import pandas as pd
-from tqdm import tqdm
-from helper import tprint, scale, pad_temporal_in, y_labels
+from tqdm import tqdm 
 import numpy as np
-import pickle
-import subprocess
+from helper import tprint, y_labels, pad_temporal_in
 
 ##### static parameters #####
 
 forecast_horizon = 2
-obs_dates = pd.date_range(pd.Timestamp(2024, 1, 1), pd.Timestamp(2025, 12, 20), freq='B')
+obs_dates = pd.date_range(pd.Timestamp(2025, 1, 1), pd.Timestamp(2025, 12, 20), freq='B')
+max_placeholder = np.iinfo(np.int32).max
 
 tprint('Reading data and preprocessing')
+
 
 # read data from db_queries script
 orders_df = pd.read_pickle(r"cache\orders_df.pkl")
 trans_df = pd.read_pickle(r"cache\trans_df.pkl")
+stck_df = pd.read_pickle(r"cache\stck_df.pkl")
 
 #convert to datetime objects
 trans_df['trans_date'] = pd.to_datetime(trans_df['trans_date'])
@@ -33,15 +34,26 @@ date_meta_dict = {date: [
         np.sin(2 * np.pi * date.weekday() / 7),
         np.cos(2 * np.pi * date.weekday() / 7),
         np.sin(2 * np.pi * date.week / 52),
-        np.cos(2 * np.pi * date.week / 52)
+        np.cos(2 * np.pi * date.week / 52),
+        (date + pd.offsets.BusinessDay(forecast_horizon) - date).days # days in forecast horizon
     ] for date in obs_dates}
 
-print(f'Gathering observations from {obs_dates[0].date()} to {obs_dates[-1].date()}')
+#convert stck table to list dictionary
+stck_dict = stck_df.T.to_dict('list')
+
+stocktake_dict = trans_df[trans_df['wip'] == 0].groupby(level=0)['on_hand'].first().to_dict() #first stock value of the year by stkno
+
+tprint(f'Gathering observations from {obs_dates[0].date()} to {obs_dates[-1].date()}')
 
 
 X, dense, Y, stkno_ids = [],[],[],[]
 
 for obs_date in tqdm(obs_dates):
+    #get metadata about date
+    date_meta = date_meta_dict[obs_date]
+
+    forecast_days = date_meta[-1]
+
     forecast_horizon_date = obs_date + pd.offsets.BusinessDay(n=forecast_horizon)
     #get open orders as of midnight on obs_date
     open_orders = orders_df.copy()[(orders_df['req_date'] <= forecast_horizon_date) & #due in less than forecast_horizon working days
@@ -62,49 +74,65 @@ for obs_date in tqdm(obs_dates):
     
     open_trans['trans_date'] = (open_trans['trans_date'] - obs_date).dt.days
 
-    #get metadata about date
-    date_meta = date_meta_dict[obs_date]
 
     for row in open_orders.itertuples(): #group by orders to train as no trans history is valid input
+
+        #move these outside loop with tails
+
+        #future values (hidden from input layer only for deriving Y)
         all_this_trans = open_trans.loc[row.Index] # all transactions
-        this_trans = all_this_trans[all_this_trans['trans_date'] < 0].tail(512) # last 512 transactions in the past
-        
-        # if len(this_trans) < 10: # if <5 -> training goes to nan
-        #     continue
-        
-        on_hand_qtys = [0,0] if this_trans.empty else list(this_trans[['on_hand', 'wip_on_hand']].iloc[-1]) #most recent stock and wip qtys
+        #get stock by end of the window
+        transactions_during_window = all_this_trans[all_this_trans['trans_date'].between(0, forecast_days)]
+        stck_added_during_window = transactions_during_window.loc[
+            ((transactions_during_window['qty']>0) & # production (stock in)
+             (transactions_during_window['wip']==0)& # for finished goods
+             (transactions_during_window['correction']==0)), # not a stock correction
+            'qty'].sum()
 
-        dense_input = (list(row[2:]) # other elements from open_orders
-            + on_hand_qtys # stock and wip levels
-            + date_meta # info about date
-            + [len(this_trans)]
-        ) #number of transactions passed to transformer
-        
-        y_label = [row[1]]
-        # miss = row[1]
-        # min_date_req = row[4]
-        # qty_req = row[2]
-        # if miss == 0:
-        #     y_label = y_labels['on_time']
-        # elif on_hand_qtys[0] < qty_req:
-        #     if sum(on_hand_qtys) < qty_req:
-        #         y_label = y_labels['no_stock']
-        #     else:
-        #         y_label = y_labels['in_wip']
-        # elif len(all_this_trans[ #if there exists a transaction for this product
-        #         (all_this_trans['trans_date'].between(0, 30)) & # in the proceeding 14 days
-        #         (all_this_trans['correction'] == 1) & # labelled as stock correction
-        #         (all_this_trans['wip'] == 0) & # for finished goods
-        #         (all_this_trans['qty'] < 0) # reducing stock
-        #     ]) > 0:
-        #     y_label = y_labels['stock_wrong']
-        # else:
-        #     y_label = y_labels['missed_dispatch']
+        #before observation date (accessible to input)
+        this_trans = all_this_trans[(all_this_trans['trans_date'] < 0)] #and trans of this year if doing multiple years
 
-        Y.append(y_label) # 'late' must be called first in groupby
-        X.append(this_trans.to_numpy())
+
+        if this_trans.empty:
+            transaction_predictors = [max_placeholder, 0,0,0,0,0,0,0]
+        else:
+            on_hand_qtys = list(this_trans[['on_hand', 'wip_on_hand']].iloc[-1])
+            transaction_predictors = [
+                this_trans['trans_date'].iloc[-1], #days since last transaction,
+                len(this_trans),
+                on_hand_qtys[0]/ row.qty_sum, # order_to_stck_ratio
+                on_hand_qtys[0], #most recent stock on hand
+                on_hand_qtys[1], #most recent wip on hand
+                int(on_hand_qtys[0] >= row.qty_sum), #sufficient stock
+                int(sum(on_hand_qtys) >= row.qty_sum), #sufficient_wip
+                int(on_hand_qtys[0] - min(this_trans.loc[this_trans['wip'] == 0, 'on_hand'], default=0) >= row.qty_sum) #sufficient_without_stocktake
+            ]
+
+        dense_input = (
+            list(row[2:]) #order data (not including target row[1])
+            + transaction_predictors #  transaction data
+            + date_meta # date data
+            + stck_dict[row.Index] # part data
+        )
+
+        if row.desp_date_max == 0:
+            y_label = y_labels.index('on_time')
+        elif stck_added_during_window + on_hand_qtys[0] < row.qty_sum: #insufficient stock by end of window
+            y_label = y_labels.index('no_stock')
+        elif len(all_this_trans[ #if there exists a transaction for this product
+                (all_this_trans['trans_date'].between(0, 30)) & # in the proceeding 14 days
+                (all_this_trans['correction'] == 1) & # labelled as stock correction
+                (all_this_trans['wip'] == 0) & # for finished goods
+                (all_this_trans['qty'] < 0) # reducing stock
+            ]) > 0:
+            y_label = y_labels.index('stock_corrected')
+        else:
+            y_label = y_labels.index('missed')
+
+        Y.append(y_label)
+        X.append(this_trans.tail(512).to_numpy())
         dense.append(dense_input)
-        stkno_ids.append([row.Index]) # track stck_ids for later splitting
+        stkno_ids.append(row.Index) # track stck_ids for later splitting
 
 
 tprint(f'{len(Y)} observations gathered.')
@@ -113,28 +141,23 @@ tprint('Padding X')
 X, mask = pad_temporal_in(X)
 
 tprint('Scaling data')
-X, x_scaler = scale(X, mask = mask)
-dense, dense_scaler = scale(dense)
-Y = np.stack(Y)
-stkno_ids = np.stack(stkno_ids)
+#X, x_scaler = scale(X, mask = mask)
+#dense, dense_scaler = scale(dense)
+dense = np.stack(dense)
+Y = np.array(Y)
+stkno_ids = np.array(stkno_ids)
 
-
-print(Y.sum(axis=0))
+print(np.bincount(Y.flatten()))
 
 obs_dict = {}
 tprint('Saving observations to compressed file')
-for data, label in zip([X, Y, dense, mask, stkno_ids], ['X', 'Y', 'dense', 'mask', 'stkno_ids']):
-    obs_dict[label] = data
 
+for data, label in zip([mask, X, Y, dense, stkno_ids], ['mask', 'X', 'Y', 'dense', 'stkno_ids']):
+    print(label, data.shape)
+    obs_dict[label] = data
 
 np.savez_compressed(rf"cache\all_obs.npz", **obs_dict)
 
-tprint('Saving meta data to pickle file')
-with open(r"cache\preprocess_meta.pkl", "wb") as f:
-    #scalers as list, temporal input column names
-	pickle.dump({'x_scaler': x_scaler, 
-                  'dense_scaler': dense_scaler,
-                  'columns': open_trans.columns}, f)
      
 tprint('Done')
 

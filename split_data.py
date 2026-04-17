@@ -1,46 +1,77 @@
 import numpy as np
+import pandas as pd
 from helper import tprint, y_labels
 
-y_labels = {'shipped': 0, 'missed': 1}
 
 tprint('Loading data')
-all_obs = np.load(r"cache\all_obs.npz")
+all_obs = np.load(r"cache\tree_all_obs.npz")
 
-tprint('Splitting groups by Y category')
-# Generate the data dictionary using comprehension
-data = {
-    f"{dataset}_{y_group}": all_obs[dataset][all_obs['Y'][:, 0] == y_vector] #y_vector.index(1)].astype(bool)] #membership of y category
-    for y_group, y_vector in y_labels.items() # for each y group
-    for dataset in all_obs.keys() # for each dataset
-}
+data_sets = ['mask','X', 'dense', 'Y']
 
 
-tprint('Creating test and train groups by sampling each Y category')
-all_ids = np.unique(all_obs['stkno_ids'])
-#need a way to generate samples with representation across each y class (and each product group?)
-#test_ids = list(np.random.choice(all_ids, size=int(0.2 * len(all_ids)), replace=False)) #reserve 20% of stkno_ids for validation
-test_ids = []
-# implement greedy algorithm for selecting sample of each y_group
+tprint('Selecting test and train sets')
 
+train_sample_size = 1300
+test_sample_size = 200
+
+df = pd.DataFrame(index = all_obs['stkno_ids'], data = {'y': all_obs['Y']})
+
+unique_ids = np.unique(all_obs['stkno_ids'])
+np.random.shuffle(unique_ids)
+
+test_ids, train_ids = set(), set()
+
+test_counts, train_counts = np.zeros(len(y_labels)), np.zeros(len(y_labels))
+
+for id in unique_ids:
+    y_counts = df.loc[[id]].groupby('y').size()
+    y_counts_list = np.array([y_counts.get(i, 0) for i in range(len(y_labels))])
+
+    if any((train_counts < train_sample_size)*(y_counts_list > 0)): # stkno_id in incomplete training set
+        train_ids.add(id)
+        train_counts = np.add(train_counts, y_counts_list)
+    elif (any(test_counts < test_sample_size)): # stkno_id in test set
+        test_ids.add(id)
+        test_counts = np.add(test_counts, y_counts_list)
+    else:
+        break
+
+if any(train_counts < train_sample_size) or any(test_counts < test_sample_size):
+    tprint('Split_failed')
+    print(train_counts)
+    print(test_counts)
+    raise
+
+
+test_pool = np.isin(all_obs['stkno_ids'], list(test_ids)) #indicies of test stkno_ids
+train_pool = np.isin(all_obs['stkno_ids'], list(train_ids))
+
+tprint('Sampling Y groups to create test/train sets')
+
+#initialise dicts
+train_data_dict = {k: [] for k in data_sets}
+test_data_dict = {k: [] for k in data_sets}
 
 train_idx, test_idx = {}, {}
-for y_group in y_labels:
-    # stkno_id is in test set filter
-    is_test = np.isin(data[f'stkno_ids_{y_group}'].flatten(), list(test_ids))
+for value, text in enumerate(y_labels):
+    y_pool = (all_obs['Y'] == value) #indices of Y group
 
-    #filter for all sets (series <5 makes transformer output nan)
-    #all_filter = np.sum(data[f'mask_{y_group}'], axis = 1)>=100 #series larger than 100 samples
-    all_filter = True
-    train_idx[y_group] = np.random.choice(np.where(~is_test & all_filter)[0], 2000, replace=False)
-    #test_idx[y_group] = np.random.choice(np.where(is_test & all_filter)[0], 100, replace=False)
+    train_idx = np.random.choice(np.where(y_pool & train_pool)[0], train_sample_size, replace=False)  # in y group and in train group
+    test_idx = np.random.choice(np.where(y_pool & test_pool)[0], test_sample_size, replace=False)  # in y group and in test group
 
 
-train_data_dict, test_data_dict = {}, {}
-for data_label in ['X', 'dense', 'mask', 'Y']:
-    train_data_dict[data_label] = np.concatenate([data[f'{data_label}_{y_group}'][train_idx[y_group]] for y_group in y_labels])
-    #test_data_dict[data_label] = np.concatenate([data[f'{data_label}_{y_group}'][test_idx[y_group]] for y_group in y_labels])
+    for data_set in data_sets:
+        train_data_dict[data_set].append(all_obs[data_set][train_idx])
+        test_data_dict[data_set].append(all_obs[data_set][test_idx])
+
+#concetenate to numpy arrays
+for k in train_data_dict:
+    train_data_dict[k] = np.concatenate(train_data_dict[k], axis=0)
+    test_data_dict[k] = np.concatenate(test_data_dict[k], axis=0)
+
 
 
 tprint('Saving data')
-np.savez_compressed(r'cache\train.npz', **train_data_dict)
-#np.savez_compressed(r'cache\test.npz', **test_data_dict)
+
+np.savez_compressed(r'cache\tree_train.npz', **train_data_dict)
+np.savez_compressed(r'cache\tree_test.npz', **test_data_dict)

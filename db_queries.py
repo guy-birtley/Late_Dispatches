@@ -1,7 +1,7 @@
 import pandas as pd
 from sqlalchemy import text, create_engine
 import pickle
-from helper import prod_groups
+from helper import prod_groups, tprint
 
 rufus_engine = create_engine(r"sqlite:///C:/Python Projects/local.db")
 
@@ -21,7 +21,7 @@ with rufus_engine.connect() as conn:
                 AND stck.stck_prod_group IN {prod_groups} -- all relevant product groups
             GROUP BY stck.rufus_stkno_id
         '''))
-
+    tprint('reading order data')
     orders = pd.read_sql(f'''
         WITH sord_desp_date AS (
             SELECT s.rufus_stkno_id, s.sord_date_req, s.sord_order_date, s.sord_qty_req,
@@ -38,10 +38,11 @@ with rufus_engine.connect() as conn:
                 MAX(desp_date) > sord_date_req AS late
         FROM sord_desp_date s
         JOIN phantom_stknos p ON p.raw_stkno_id = s.rufus_stkno_id
+        WHERE sord_qty_req > 0
         GROUP BY stkno_id, sord_date_req, sord_order_date
     ''', con = conn, index_col = 'stkno_id')
     #slight descrepency here as partially fulfilled orders will still show full allocation until despatched but fuck it
-
+    tprint('reading trans data')
     trans = pd.read_sql(f'''
         WITH ranked AS (
             SELECT
@@ -105,6 +106,19 @@ with rufus_engine.connect() as conn:
         ORDER BY stkno_id, trans_date
 
     ''', con = conn, index_col='stkno_id')
+    tprint('reading stck data')
+    stck = pd.read_sql(f'''
+        SELECT rufus_stkno_id,
+            stck_dimension_length,
+            stck_size,
+            stck_user_check01,stck_user_check02, stck_user_check03,
+            stck_prod_group
+        FROM stck
+        WHERE stck_prod_group IN {prod_groups}
+        GROUP BY rufus_stkno_id -- incase double entries of same product
+    ''', index_col= 'rufus_stkno_id', con = conn)
 
+tprint('saving')
+stck.to_pickle(r'cache\stck_df.pkl')
 orders.to_pickle(r'cache\orders_df.pkl')
 trans.to_pickle(r'cache\trans_df.pkl')
