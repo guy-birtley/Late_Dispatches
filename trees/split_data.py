@@ -1,42 +1,43 @@
 import numpy as np
 from helper import tprint, y_labels
 
+
 tprint('Loading data')
 all_obs = np.load(r"cache\tree_all_obs.npz")
 
-tprint('Splitting groups by Y category')
-# Generate the data dictionary using comprehension
-data = {
-    f"{dataset}_{y_group}": all_obs[dataset][all_obs['Y'][:, y_vector.index(1)].astype(bool)] #membership of y category # binary - 0] == y_vector] #
-    for y_group, y_vector in y_labels.items() # for each y group
-    for dataset in all_obs.keys() # for each dataset
-}
+data_sets = ['dense', 'Y']
 
 
-tprint('Creating test and train groups by sampling each Y category')
+tprint('Selecting test and train sets')
 all_ids = np.unique(all_obs['stkno_ids'])
 #need a way to generate samples with representation across each y class (and each product group?)
 #test_ids = list(np.random.choice(all_ids, size=int(0.2 * len(all_ids)), replace=False)) #reserve 20% of stkno_ids for validation
 test_ids = []
 # implement greedy algorithm for selecting sample of each y_group
 
+test_pool = np.isin(all_obs['stkno_ids'], list(test_ids)) #indicies of test stkno_ids
+
+tprint('Sampling Y groups to create test/train sets')
+
+#initialise dicts
+train_data_dict = {k: [] for k in data_sets}
+#test_data_dict = {k: [] for k in data_sets}
 
 train_idx, test_idx = {}, {}
-for y_group in y_labels:
-    # stkno_id is in test set filter
-    is_test = np.isin(data[f'stkno_ids_{y_group}'].flatten(), list(test_ids))
+for value, text in enumerate(y_labels):
+    y_pool = (all_obs['Y'] == value) #indices of Y group
 
-    #filter for all sets (series <5 makes transformer output nan)
-    #all_filter = np.sum(data[f'mask_{y_group}'], axis = 1)>=100 #series larger than 100 samples
-    all_filter = True
-    train_idx[y_group] = np.random.choice(np.where(~is_test & all_filter)[0], 1300, replace=False)
-    #test_idx[y_group] = np.random.choice(np.where(is_test & all_filter)[0], 100, replace=False)
+    train_idx = np.random.choice(np.where(y_pool & ~test_pool)[0], 1500, replace=False)  # in y group and in train group
+    # test_idx = np.random.choice(np.where(y_pool & test_pool)[0], 200, replace=False)  # in y group and in test group
 
 
-train_data_dict, test_data_dict = {}, {}
-for data_label in ['dense', 'Y']: #'X', 'mask'
-    train_data_dict[data_label] = np.concatenate([data[f'{data_label}_{y_group}'][train_idx[y_group]] for y_group in y_labels])
-    #test_data_dict[data_label] = np.concatenate([data[f'{data_label}_{y_group}'][test_idx[y_group]] for y_group in y_labels])
+    for data_set in data_sets:
+        train_data_dict[data_set].append(all_obs[data_set][train_idx])
+        #test_data_dict[data_set].append(all_obs[data_set][test_idx])
+
+#concetenate to numpy arrays
+for k in train_data_dict:
+    train_data_dict[k] = np.concatenate(train_data_dict[k], axis=0)
 
 
 tprint('Saving data')

@@ -11,17 +11,21 @@ warnings.filterwarnings("ignore", category=UserWarning, module="stopit")
 if __name__ == "__main__": # for multiple spawns
 
     tprint('Loading data')
-    train_data_raw = np.load(r'cache\train.npz')
+    train_data_raw = np.load(r'cache\tree_train.npz')
 
-    Y = np.argmax(train_data_raw['Y'], axis=1) #labels one_hot encoding
+    Y = train_data_raw['Y'] #labels one_hot encoding
     dense = train_data_raw['dense']
     
+    print(np.bincount(Y.flatten()))
+    print(dense.shape)
+
+
     tpot = TPOTClassifier(
         generations=100,
         population_size=50,
         verbosity=2,
         n_jobs=-1,
-        max_time_mins=120,        # 1–2 hours runtime
+        max_time_mins=120,        # 2 hour runtime
         periodic_checkpoint_folder="tpot_checkpoints"
     )
 

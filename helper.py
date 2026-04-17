@@ -6,13 +6,8 @@ from sklearn.preprocessing import RobustScaler
 prod_groups = (10001, 10003, 10005, 10006, 10009)
 
 
-y_labels = {
-    'on_time' : [1, 0, 0, 0, 0],
-    'no_stock' : [0, 1, 0, 0, 0],
-    'in_wip' : [0, 0, 1, 0, 0],
-    'stock_wrong' : [0, 0, 0, 1, 0],
-    'missed_dispatch' : [0, 0, 0, 0, 1]
-}
+y_labels = ['on_time', 'no_stock', 'stock_corrected', 'missed']
+
 
 def tprint(text):
     print(datetime.now(), text)
