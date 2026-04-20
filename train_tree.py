@@ -27,14 +27,12 @@ if __name__ == "__main__": # for multiple spawns
     with open(r"cache\model_gbtree.pkl", "wb") as f:
         pickle.dump(GBTree, f)
 
-    # tprint('Loading test data')
-    # test_data_raw = np.load(r'cache\test.npz')
+    tprint('Loading test data')
+    test_data_raw = np.load(r'cache\test.npz')
 
-    # tprint('Running predictions')
-    # Y_hat = GBTree.predict(test_data_raw['dense'])
+    tprint('Running predictions')
+    Y_hat = GBTree.predict(test_data_raw['dense'])
 
-    # print('Accuracy', (Y_hat == test_data_raw['Y']).mean())
-    # print(Y_hat[:-30])
-    # print(test_data_raw['Y'][:-30])
+    print('Accuracy', (Y_hat == test_data_raw['Y']).mean())
 
     

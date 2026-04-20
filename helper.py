@@ -1,7 +1,7 @@
 
 from datetime import datetime
 import numpy as np
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import StandardScaler
 
 prod_groups = (10001, 10003, 10005, 10006, 10009)
 
@@ -29,7 +29,7 @@ def scale(obs_list, mask = None, categorical_cols = 0, scaler = None):
     x2d = x_cont.reshape(-1, orig_shape[-1]) #make 2d for scale transform
     if scaler is None:
         #Robust scaler scales by iqr so stable with outliers and centred on 0
-        scaler = RobustScaler(with_centering=False) #different scaler for each input
+        scaler = StandardScaler() #different scaler for each input
         #scaler = MinMaxScaler() #scale all inputs together to preserve relative 
         if mask is None:
             scaler.fit(x2d)

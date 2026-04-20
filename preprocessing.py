@@ -121,7 +121,7 @@ for obs_date in tqdm(obs_dates):
         elif stck_added_during_window + on_hand_qtys[0] < row.qty_sum: #insufficient stock by end of window
             y_label = y_labels.index('no_stock')
         elif len(all_this_trans[ #if there exists a transaction for this product
-                (all_this_trans['trans_date'].between(0, 14)) & # in the proceeding 14 days
+                (all_this_trans['trans_date'].between(0, 10)) & # in the proceeding 10 days
                 (all_this_trans['correction'] == 1) & # labelled as stock correction
                 (all_this_trans['wip'] == 0) & # for finished goods
                 (all_this_trans['qty'] < 0) # reducing stock
@@ -154,7 +154,6 @@ obs_dict = {}
 tprint('Saving observations to cache')
 
 for data, label in zip([mask, X, Y, dense, stkno_ids], ['mask', 'X', 'Y', 'dense', 'stkno_ids']):
-    print(label, data.shape)
     obs_dict[label] = data
 
 np.savez_compressed(rf"cache\all_obs.npz", **obs_dict)
