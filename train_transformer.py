@@ -71,10 +71,21 @@ class TransformerModel(nn.Module):
             nn.Linear(16, Y_classes) # output logit score for each Y class
         )
 
+        # self.test_temporal_direct = nn.Sequential(
+        #     nn.Linear(self.dense_neurons, 64),
+        #     nn.LeakyReLU(0.01),
+        #     nn.Linear(64, 16),
+        #     nn.LeakyReLU(0.01), #nn.ReLU(),
+        #     nn.Linear(16, Y_classes)
+        # )
+
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, X, mask, dense_in):
+    #     dense_branch_out = self.dense_branch(dense_in)
+    #     return self.test_temporal_direct(dense_branch_out)
 
+    # def full_forward():
         #foundation stream
         x = X.permute(0, 2, 1) # swap dimensions for moment input so now [batch, channels, context window]
         # only pass input sequences with more than 5 transactions - short sequences produce nans and should be predicted by dense layer instead
@@ -84,11 +95,10 @@ class TransformerModel(nn.Module):
             #get embeddings where sequence is long enough [batch, channels, moment output dimension]
             found_raw = self.foundation_model(x_enc=x[is_long_enough], input_mask=mask[is_long_enough]).embeddings
             found_branch_out[is_long_enough] = self.found_branch(found_raw)
-        
+        used_moment = is_long_enough.float().unsqueeze(-1) #binary indicator if that batch element used transformer or not
+
         # dense stream
         dense_branch_out = self.dense_branch(dense_in)
-
-        used_moment = is_long_enough.float().unsqueeze(-1) #binary indicator if that batch element used transformer or not
 
         # concatenate streams
         combined = torch.cat([found_branch_out, dense_branch_out, used_moment], dim=-1)
@@ -119,7 +129,7 @@ if __name__ == "__main__": # for multiple spawns
     device = torch.device("xpu")
     model = model.to(device)
 
-    batch_size = 128
+    batch_size = 16
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0) 
     
@@ -127,6 +137,8 @@ if __name__ == "__main__": # for multiple spawns
 
     tprint('Training')
     for batch_count, batch in enumerate(tqdm(train_dataloader, desc="Training")):
+    # batch = next(iter(train_dataloader))
+    # for batch_count in range(500):
         #use gpu for faster computation
         X = batch['X'].to(device, non_blocking = True)
         mask = batch['mask'].to(device, non_blocking = True)

@@ -93,6 +93,8 @@ for obs_date in tqdm(obs_dates):
         #before observation date (accessible to input)
         this_trans = all_this_trans[(all_this_trans['trans_date'] < 0)] #and trans of this year if doing multiple years
 
+        # if len(this_trans) < 200: #do not include sequences of less than x
+        #     continue
 
         if this_trans.empty:
             transaction_predictors = [max_placeholder, 0,0,0,0,0,0,0]

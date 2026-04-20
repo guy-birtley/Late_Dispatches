@@ -16,8 +16,8 @@ data_sets = ['mask','X', 'dense', 'Y']
 
 tprint('Selecting test and train sets')
 
-train_sample_size = 1300
-test_sample_size = 200
+train_sample_size = 700
+test_sample_size = 50
 
 df = pd.DataFrame(index = all_obs['stkno_ids'], data = {'y': all_obs['Y']})
 
