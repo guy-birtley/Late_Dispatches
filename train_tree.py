@@ -1,9 +1,7 @@
-from helper import tprint
 import numpy as np
-import joblib
-from tpot import TPOTClassifier
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="stopit")
+from sklearn.ensemble import GradientBoostingClassifier
+import pickle
+from helper import tprint
 
 
 if __name__ == "__main__": # for multiple spawns
@@ -11,20 +9,32 @@ if __name__ == "__main__": # for multiple spawns
     tprint('Loading data')
     train_data_raw = np.load(r'cache\train.npz')
 
-    #Y = np.argmax(train_data_raw['Y'], axis=1) #labels one_hot encoding
-    Y = train_data_raw['Y']
-    
-    tpot = TPOTClassifier(
-        generations=100,
-        population_size=50,
-        verbosity=2,
-        n_jobs=-1,
-        max_time_mins=120,        # 1–2 hours runtime
-        periodic_checkpoint_folder="tpot_checkpoints"
+    tprint('Fitting tree')
+    # Average CV score on the training set was: 0.7165384615384615
+    GBTree = GradientBoostingClassifier(
+        learning_rate=0.5, #how much each tree contributes
+        max_depth=10, #depth of each tree
+        max_features=0.35, #fraction of features seen by each tree
+        min_samples_leaf=7, #minimum size of leaf resulting from a split
+        min_samples_split=14, #minimum size to attempt a split (saves attempted splits guarenteed to fail min_sample_leaf)
+        n_estimators=100, #number of trees
+        subsample=1.0 #fraction of data used per tree (use all rows)
     )
 
-    tpot.fit(train_data_raw['dense'], Y)
+    GBTree.fit(train_data_raw['dense'],train_data_raw['Y'])
 
-    tpot.export(r"cache\best_pipeline_binary.py")
-    joblib.dump(tpot.fitted_pipeline_, r"cache\best_model_binary.pkl")
+    tprint('Saving model')
+    with open(r"cache\model_gbtree.pkl", "wb") as f:
+        pickle.dump(GBTree, f)
+
+    # tprint('Loading test data')
+    # test_data_raw = np.load(r'cache\test.npz')
+
+    # tprint('Running predictions')
+    # Y_hat = GBTree.predict(test_data_raw['dense'])
+
+    # print('Accuracy', (Y_hat == test_data_raw['Y']).mean())
+    # print(Y_hat[:-30])
+    # print(test_data_raw['Y'][:-30])
+
     

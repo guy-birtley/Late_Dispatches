@@ -2,9 +2,14 @@ import numpy as np
 import pandas as pd
 from helper import tprint, y_labels
 
+'''
+This creates equal distribution of each class for both test and train sets.
+Instead, I should take a k fold split for the test set, then take equal sample of each group for non-test sets.
+'''
+
 
 tprint('Loading data')
-all_obs = np.load(r"cache\tree_all_obs.npz")
+all_obs = np.load(r"cache\all_obs.npz")
 
 data_sets = ['mask','X', 'dense', 'Y']
 
@@ -66,12 +71,12 @@ for value, text in enumerate(y_labels):
 
 #concetenate to numpy arrays
 for k in train_data_dict:
-    train_data_dict[k] = np.concatenate(train_data_dict[k], axis=0)
+    train_data_dict[k] = np.concatenate(train_data_dict[k], axis=0) #classes in order - must be trained in shuffled batches
     test_data_dict[k] = np.concatenate(test_data_dict[k], axis=0)
 
 
 
 tprint('Saving data')
 
-np.savez_compressed(r'cache\tree_train.npz', **train_data_dict)
-np.savez_compressed(r'cache\tree_test.npz', **test_data_dict)
+np.savez_compressed(r'cache\train.npz', **train_data_dict)
+np.savez_compressed(r'cache\test.npz', **test_data_dict)

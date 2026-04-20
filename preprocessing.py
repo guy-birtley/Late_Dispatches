@@ -1,7 +1,8 @@
 import pandas as pd
 from tqdm import tqdm 
 import numpy as np
-from helper import tprint, y_labels, pad_temporal_in
+import pickle
+from helper import tprint, y_labels, pad_temporal_in, scale
 
 ##### static parameters #####
 
@@ -120,7 +121,7 @@ for obs_date in tqdm(obs_dates):
         elif stck_added_during_window + on_hand_qtys[0] < row.qty_sum: #insufficient stock by end of window
             y_label = y_labels.index('no_stock')
         elif len(all_this_trans[ #if there exists a transaction for this product
-                (all_this_trans['trans_date'].between(0, 30)) & # in the proceeding 14 days
+                (all_this_trans['trans_date'].between(0, 14)) & # in the proceeding 14 days
                 (all_this_trans['correction'] == 1) & # labelled as stock correction
                 (all_this_trans['wip'] == 0) & # for finished goods
                 (all_this_trans['qty'] < 0) # reducing stock
@@ -134,23 +135,23 @@ for obs_date in tqdm(obs_dates):
         dense.append(dense_input)
         stkno_ids.append(row.Index) # track stck_ids for later splitting
 
+Y = np.array(Y)
+stkno_ids = np.array(stkno_ids)
 
 tprint(f'{len(Y)} observations gathered.')
+print(np.bincount(Y.flatten()))
+
 
 tprint('Padding X')
 X, mask = pad_temporal_in(X)
 
 tprint('Scaling data')
-#X, x_scaler = scale(X, mask = mask)
-#dense, dense_scaler = scale(dense)
-dense = np.stack(dense)
-Y = np.array(Y)
-stkno_ids = np.array(stkno_ids)
-
-print(np.bincount(Y.flatten()))
+#scaling makes no difference to tree, does make difference to nn
+X, x_scaler = scale(X, mask = mask)
+dense, dense_scaler = scale(dense)
 
 obs_dict = {}
-tprint('Saving observations to compressed file')
+tprint('Saving observations to cache')
 
 for data, label in zip([mask, X, Y, dense, stkno_ids], ['mask', 'X', 'Y', 'dense', 'stkno_ids']):
     print(label, data.shape)
@@ -158,6 +159,11 @@ for data, label in zip([mask, X, Y, dense, stkno_ids], ['mask', 'X', 'Y', 'dense
 
 np.savez_compressed(rf"cache\all_obs.npz", **obs_dict)
 
+with open(r"cache\scalers.pkl", "wb") as f:
+    pickle.dump({
+        'dense_scaler': dense_scaler,
+        'X_scaler': x_scaler
+    }, f)
      
 tprint('Done')
 

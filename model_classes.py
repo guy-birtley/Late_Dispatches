@@ -23,8 +23,6 @@ class FoundationDataset(Dataset):
         }
 
 
-    
-
 class embModel(nn.Module):
     def __init__(self):
         super().__init__()
@@ -121,7 +119,7 @@ class Model2(nn.Module):
             nn.ReLU(),
             nn.Linear(64, 16), # another dense layer
             nn.ReLU(),
-            nn.Linear(16, 5) # output layer for 5 classes
+            nn.Linear(16, 4) # output logit score for each Y class
         )
 
         self.criterion = nn.CrossEntropyLoss()
@@ -145,26 +143,3 @@ class Model2(nn.Module):
     def predict(self, x, mask, dense_in):
         logits = self.forward(x, mask, dense_in)
         return torch.softmax(logits, dim=1) # predict class membership (to predict probability of each class membership, use sigmoid)
-
-
-class ModelDense(nn.Module):
-    #model just testing a dense network without temporal features
-    def __init__(self):
-        super().__init__()
-        self.dense_input = nn.Linear(13, 128)
-        self.fc1 = nn.Linear(128, 64)
-        self.fc2 = nn.Linear(64, 16)
-        self.out_layer = nn.Linear(16, 1)
-        
-        self.relu = nn.ReLU()
-        self.criterion = nn.BCEWithLogitsLoss()
-
-    def forward(self, dense_in):
-        x = self.relu(self.dense_input(dense_in))
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
-        return self.out_layer(x)
-    
-    def predict(self, dense_in):
-        logits = self.forward(dense_in)
-        return torch.sigmoid(logits) # 0-1 probability
