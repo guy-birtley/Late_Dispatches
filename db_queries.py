@@ -22,25 +22,46 @@ with rufus_engine.connect() as conn:
             GROUP BY stck.rufus_stkno_id
         '''))
     tprint('reading order data')
-    orders = pd.read_sql(f'''
-        WITH sord_desp_date AS (
-            SELECT s.rufus_stkno_id, s.sord_date_req, s.sord_order_date, s.sord_qty_req,
-                    max(acaud_sys_date) AS desp_date -- get max despatch date for each order
-            FROM sord s
-            JOIN acaud a ON s.rufus_stkno_id = a.rufus_stkno_id AND a.acaud_ref1 = s.sord_order  -- desp date better from sode?
-            GROUP BY s.rufus_stkno_id, s.sord_date_req, s.sord_order_date, s.sord_qty_req
-        )
-        SELECT non_phantom_stkno_id AS stkno_id,
-                sord_date_req AS req_date,
-                sord_order_date AS order_date,
-                MAX(desp_date) AS desp_date,
-                SUM(sord_qty_req) AS qty,
-                MAX(desp_date) > sord_date_req AS late
-        FROM sord_desp_date s
-        JOIN phantom_stknos p ON p.raw_stkno_id = s.rufus_stkno_id
-        WHERE sord_qty_req > 0
-        GROUP BY stkno_id, sord_date_req, sord_order_date
-    ''', con = conn, index_col = 'stkno_id')
+    orders = pd.read_sql(
+# f'''
+# WITH sord_desp_date AS (
+#     SELECT s.rufus_stkno_id, s.sord_date_req, s.sord_order_date, s.sord_qty_req,
+#             max(acaud_sys_date) AS desp_date -- get max despatch date for each order
+#     FROM sord s
+#     JOIN acaud a ON s.rufus_stkno_id = a.rufus_stkno_id AND a.acaud_ref1 = s.sord_order
+#     GROUP BY s.rufus_stkno_id, s.sord_date_req, s.sord_order_date, s.sord_qty_req
+# )
+# SELECT non_phantom_stkno_id AS stkno_id,
+#         sord_date_req AS req_date,
+#         sord_order_date AS order_date,
+#         MAX(desp_date) AS desp_date,
+#         SUM(sord_qty_req) AS qty,
+#         MAX(desp_date) > sord_date_req AS late
+# FROM sord_desp_date s
+# JOIN phantom_stknos p ON p.raw_stkno_id = s.rufus_stkno_id
+# WHERE sord_qty_req > 0
+# GROUP BY stkno_id, sord_date_req, sord_order_date
+# ''', 
+    '''
+SELECT ps.non_phantom_stkno_id AS stkno_id,
+        sord_date_req AS req_date,
+        sord_order_date AS order_date, -- or last mod date?
+        sord_last_mod_date AS last_mod_date,
+        sord_datetime AS last_mod_datetime,
+        sord_qty_req AS qty,
+        sord_order AS order_num,
+        MAX(acaud_sys_date) AS desp_date,
+        MAX(post_datetime) AS desp_datetime,
+        MAX(acaud_sys_date) > sord_date_req AS late
+FROM sord s
+JOIN phantom_stknos ps ON ps.raw_stkno_id = s.rufus_stkno_id
+JOIN phantom_stknos pa ON pa.non_phantom_stkno_id = ps.non_phantom_stkno_id
+JOIN acaud a ON a.rufus_stkno_id = pa.raw_stkno_id AND a.acaud_ref1 = s.sord_order
+WHERE sord_qty_req > 0
+    AND sord_last_mod_date >= sord_order_date
+    AND sord_date_req >= sord_order_date
+GROUP BY ps.non_phantom_stkno_id, sord_date_req, sord_order_date, sord_qty_req, sord_order
+''', con = conn, index_col = 'stkno_id')
     #slight descrepency here as partially fulfilled orders will still show full allocation until despatched but fuck it
     tprint('reading trans data')
     trans = pd.read_sql(f'''

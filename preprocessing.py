@@ -68,6 +68,8 @@ for obs_date in tqdm(obs_dates):
     #put min/max due dates as integers relative to obs_date
     open_orders['req_date'] = (open_orders['req_date'] - obs_date).apply(lambda x: x.dt.days)
     open_orders.columns = ['_'.join(col) for col in open_orders.columns.values] #multi to single columns
+    
+    # set Y
     open_orders['desp_date_max'] = (open_orders['desp_date_max'] > forecast_horizon_date).astype(int) #shipped after forecast_window
 
     #get transactions of open order parts before observation date
@@ -123,7 +125,7 @@ for obs_date in tqdm(obs_dates):
         elif stck_added_during_window + on_hand_qtys[0] < row.qty_sum: #insufficient stock by end of window
             y_label = y_labels.index('no_stock')
         elif len(all_this_trans[ #if there exists a transaction for this product
-                (all_this_trans['trans_date'].between(0, 10)) & # in the proceeding 10 days
+                (all_this_trans['trans_date'].between(0, 4)) & # in the proceeding 10 days
                 (all_this_trans['correction'] == 1) & # labelled as stock correction
                 (all_this_trans['wip'] == 0) & # for finished goods
                 (all_this_trans['qty'] < 0) # reducing stock
@@ -143,6 +145,7 @@ stkno_ids = np.array(stkno_ids)
 tprint(f'{len(Y)} observations gathered.')
 print(np.bincount(Y.flatten()))
 
+raise
 
 tprint('Padding X')
 X, mask = pad_temporal_in(X)
