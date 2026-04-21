@@ -1,27 +1,40 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.tree import DecisionTreeClassifier
 
+#read db query output
 orders_df = pd.read_pickle(r"cache\orders_df.pkl")
 
+#set to datetime
 for col in orders_df.columns:
     if col.split('_')[-1] in ('date', 'datetime'):
         orders_df[col] = pd.to_datetime(orders_df[col], errors="coerce")
 
+#filter for years in 2024
 orders_df = orders_df[orders_df['req_date'].dt.year.isin([2024, 2025])]
 
-
+#extract leadtime parameter
 orders_df['lead_time'] = (orders_df['req_date'] - orders_df['order_date']).dt.days
 
+#sample 100 of each class
 sampled_df = orders_df.groupby('late').sample(n=100, random_state=42)
+
+
+clf = DecisionTreeClassifier(max_depth=2, criterion='entropy')
+clf.fit(sampled_df[['qty', 'lead_time']], sampled_df['late'])
+
+print(clf.tree_.feature, clf.tree_.threshold)
+print(clf.tree_.value)
+
+raise
 
 for i, label in enumerate(['On Time', 'Late']):
     mask = (sampled_df['late'] == i)
-    plt.scatter(sampled_df.loc[mask, 'qty'],sampled_df.loc[mask, 'lead_time'], label=label)
+    plt.scatter(sampled_df.loc[mask, 'qty'], sampled_df.loc[mask, 'lead_time'], label=label)
 
+plt.axvline(x=12.5, linestyle='--', color='black')
 plt.ylabel("Lead Time")
 plt.xlabel("Order Qty")
 plt.legend()
 plt.show()
 
-
-plt.show()
