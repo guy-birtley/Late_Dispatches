@@ -26,15 +26,20 @@ clf.fit(sampled_df[['qty', 'lead_time']], sampled_df['late'])
 print(clf.tree_.feature, clf.tree_.threshold)
 print(clf.tree_.value)
 
-raise
 
-for i, label in enumerate(['On Time', 'Late']):
-    mask = (sampled_df['late'] == i)
-    plt.scatter(sampled_df.loc[mask, 'qty'], sampled_df.loc[mask, 'lead_time'], label=label)
+late_mask = (sampled_df['late'] == 1)
+plt.scatter(sampled_df.loc[late_mask, 'qty'], sampled_df.loc[late_mask, 'lead_time'], label='Late', color = 'red')
+plt.scatter(sampled_df.loc[~late_mask, 'qty'], sampled_df.loc[~late_mask, 'lead_time'], label='On Time', color = 'green')
 
-plt.axvline(x=12.5, linestyle='--', color='black')
+#first tree split
+plt.axvline(x=12.5, linestyle='--', color='black', label = 'First Split')
+
+#second tree split
+plt.hlines(y=7.5, xmin=0, xmax=12.5, linestyles='--', color = 'blue', label = 'Second Split')
+plt.hlines(y=4.5, xmin=12.5, xmax=60, linestyles='--', color = 'blue')
+plt.xlim(0, 60)
+plt.ylim(0, 75)
 plt.ylabel("Lead Time")
 plt.xlabel("Order Qty")
 plt.legend()
 plt.show()
-
