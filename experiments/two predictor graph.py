@@ -1,14 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.tree import DecisionTreeClassifier
-
-#read db query output
-orders_df = pd.read_pickle(r"cache\orders_df.pkl")
-
-#set to datetime
-for col in orders_df.columns:
-    if col.split('_')[-1] in ('date', 'datetime'):
-        orders_df[col] = pd.to_datetime(orders_df[col], errors="coerce")
+from experiment_helper import orders_df
 
 #filter for years in 2024
 orders_df = orders_df[orders_df['req_date'].dt.year.isin([2024, 2025])]

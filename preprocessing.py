@@ -145,7 +145,6 @@ stkno_ids = np.array(stkno_ids)
 tprint(f'{len(Y)} observations gathered.')
 print(np.bincount(Y.flatten()))
 
-raise
 
 tprint('Padding X')
 X, mask = pad_temporal_in(X)
